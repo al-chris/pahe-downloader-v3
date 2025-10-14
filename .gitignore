@@ -8,3 +8,7 @@ wheels/
 
 # Virtual environments
 .venv
+
+chromedriver_win32
+
+chromedriver_win32.zip

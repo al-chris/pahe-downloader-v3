@@ -8,7 +8,7 @@ import threading
 from typing import List, Dict, Optional, Union, TypedDict
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.chrome.service import Service
 
 class Episode(TypedDict):
     number: int
@@ -58,7 +58,8 @@ def get_episodes(siteLink: str) -> List[Dict[str, Union[int, str]]]:
     options.headless = True
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
-    driver = webdriver.Chrome(ChromeDriverManager().install(), options=options)
+    service = Service(executable_path='chromedriver_win32/chromedriver.exe')
+    driver = webdriver.Chrome(service=service, options=options)
     url = f"https://animepahe.si/anime/{siteLink}"
     print(f"Fetching anime page with Selenium: {url}")
     try:
