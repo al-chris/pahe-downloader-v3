@@ -54,30 +54,33 @@ def get_episodes(siteLink: str) -> List[Dict[str, Union[int, str]]]:
     session = requests.Session()
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36'}
     session.headers.update(headers)
-    ep_list: List[Dict[str, Union[int, str]]] = []
-    page = 1
-    while True:
-        url = f"https://animepahe.ru/api?m=release&id={siteLink}&sort=episode_asc&page={page}"
-        print(f"Fetching URL: {url}")
-        try:
-            cookie = get_ddg_cookies(url)
-            session.cookies.set('__ddg2', cookie, domain='animepahe.ru')  # type: ignore
-            response = session.get(url)
-            print(f"Response status: {response.status_code}")
-            data = response.json()
-            print(f"Data: {data}")
-            if not data.get('data'):
-                print("No data in response")
-                break
-            for ep in data['data']:
-                ep_link = f"https://animepahe.ru/play/{siteLink}/{ep['session']}"
-                ep_list.append({'number': ep['episode'], 'link': ep_link})
-            page += 1
-        except Exception as e:
-            print(f"Exception: {e}")
-            break
-    print(f"Total episodes: {len(ep_list)}")
-    return ep_list
+    url = f"https://animepahe.si/anime/{siteLink}"
+    print(f"Fetching anime page: {url}")
+    try:
+        cookie = get_ddg_cookies(url)
+        session.cookies.set('__ddg2', cookie, domain='animepahe.si')  # type: ignore
+        response = session.get(url)
+        print(f"Response status: {response.status_code}")
+        if response.status_code != 200:
+            print("Failed to fetch page")
+            return []
+        soup = BeautifulSoup(response.text, 'html.parser')
+        ep_list = []
+        for a in soup.find_all('a', href=True):
+            if '/play/' in a['href'] and siteLink in a['href']:
+                text = a.get_text().strip()
+                if text.startswith('Episode '):
+                    try:
+                        ep_num = int(text.split()[1])
+                        ep_link = 'https://animepahe.si' + a['href']
+                        ep_list.append({'number': ep_num, 'link': ep_link})
+                    except:
+                        pass
+        print(f"Episodes found: {len(ep_list)}")
+        return sorted(ep_list, key=lambda x: x['number'])
+    except Exception as e:
+        print(f"Exception: {e}")
+        return []
 
 def get_download_options(ep_link: str) -> List[DownloadOption]:
     session = requests.Session()
@@ -85,7 +88,7 @@ def get_download_options(ep_link: str) -> List[DownloadOption]:
     session.headers.update(headers)
     try:
         cookie = get_ddg_cookies(ep_link)
-        session.cookies.set('__ddg2', cookie, domain='animepahe.ru')  # type: ignore
+        session.cookies.set('__ddg2', cookie, domain='animepahe.si')  # type: ignore
         response = session.get(ep_link)
         soup = BeautifulSoup(response.text, 'html.parser')
         options: List[DownloadOption] = []
@@ -171,7 +174,7 @@ def download():
             pass  # Skip failed downloads
     
     threads: List[threading.Thread] = []
-    for ep in episodes[:5]:  # Limit to first 5 for testing
+    for ep in episodes:
         t = threading.Thread(target=download_ep, args=(ep,))
         threads.append(t)
         t.start()
