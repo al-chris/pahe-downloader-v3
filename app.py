@@ -52,17 +52,30 @@ def decrypt(full_string: str, key: str, v1: str, v2: str) -> str:
 
 def get_episodes(siteLink: str) -> List[Dict[str, Union[int, str]]]:
     session = requests.Session()
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36'}
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Cache-Control': 'max-age=0',
+    }
     session.headers.update(headers)
     url = f"https://animepahe.si/anime/{siteLink}"
     print(f"Fetching anime page: {url}")
     try:
         cookie = get_ddg_cookies(url)
-        session.cookies.set('__ddg2', cookie, domain='animepahe.si')  # type: ignore
+        print(f"Cookie obtained: {cookie}")
+        session.cookies.set('__ddg2', cookie, domain='.animepahe.si')  # type: ignore
         response = session.get(url)
         print(f"Response status: {response.status_code}")
         if response.status_code != 200:
-            print("Failed to fetch page")
+            print(f"Response text: {response.text[:500]}")
             return []
         soup = BeautifulSoup(response.text, 'html.parser')
         ep_list = []
@@ -82,21 +95,33 @@ def get_episodes(siteLink: str) -> List[Dict[str, Union[int, str]]]:
         print(f"Exception: {e}")
         return []
 
-def get_download_options(ep_link: str) -> List[DownloadOption]:
+def get_download_options(ep_link: str) -> List[Dict[str, str]]:
     session = requests.Session()
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36'}
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'same-origin',
+        'Sec-Fetch-User': '?1',
+        'Cache-Control': 'max-age=0',
+    }
     session.headers.update(headers)
     try:
         cookie = get_ddg_cookies(ep_link)
-        session.cookies.set('__ddg2', cookie, domain='animepahe.si')  # type: ignore
+        session.cookies.set('__ddg2', cookie, domain='.animepahe.si')  # type: ignore
         response = session.get(ep_link)
         soup = BeautifulSoup(response.text, 'html.parser')
-        options: List[DownloadOption] = []
+        options = []
         for a in soup.find_all('a', class_='dropdown-item'):
             text = a.get_text()
             if 'p' in text and 'MB' in text:
                 res = text.split()[0]
-                url = str(a['href'])
+                url = a['href']
                 options.append({'res': res, 'url': url})
         return options
     except:
@@ -104,11 +129,23 @@ def get_download_options(ep_link: str) -> List[DownloadOption]:
 
 def get_download_link(pahe_win_url: str) -> Optional[str]:
     session = requests.Session()
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36'}
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'cross-site',
+        'Sec-Fetch-User': '?1',
+        'Cache-Control': 'max-age=0',
+    }
     session.headers.update(headers)
     try:
         cookie = get_ddg_cookies(pahe_win_url)
-        session.cookies.set('__ddg2', cookie, domain='pahe.win')  # type: ignore
+        session.cookies.set('__ddg2', cookie, domain='.pahe.win')  # type: ignore
         response = session.get(pahe_win_url)
         soup = BeautifulSoup(response.text, 'html.parser')
         redirect_link_elem = soup.find('a', text='Redirect me')
@@ -116,7 +153,7 @@ def get_download_link(pahe_win_url: str) -> Optional[str]:
             return None
         redirect_link = str(redirect_link_elem['href'])
         cookie = get_ddg_cookies(redirect_link)
-        session.cookies.set('__ddg2', cookie, domain='kwik.cx')  # type: ignore
+        session.cookies.set('__ddg2', cookie, domain='.kwik.cx')  # type: ignore
         response = session.get(redirect_link)
         match = re.search(r'\("(\w+)",\d+,"(\w+)",(\d+),(\d+),\d+\)', response.text)
         if not match:
