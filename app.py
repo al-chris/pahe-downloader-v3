@@ -6,6 +6,9 @@ import os
 import zipfile
 import threading
 from typing import List, Dict, Optional, Union, TypedDict
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from webdriver_manager.chrome import ChromeDriverManager
 
 class Episode(TypedDict):
     number: int
@@ -51,33 +54,21 @@ def decrypt(full_string: str, key: str, v1: str, v2: str) -> str:
     return r
 
 def get_episodes(siteLink: str) -> List[Dict[str, Union[int, str]]]:
-    session = requests.Session()
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Accept-Encoding': 'gzip, deflate',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Sec-Fetch-User': '?1',
-        'Cache-Control': 'max-age=0',
-    }
-    session.headers.update(headers)
+    options = Options()
+    options.headless = True
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    driver = webdriver.Chrome(ChromeDriverManager().install(), options=options)
     url = f"https://animepahe.si/anime/{siteLink}"
-    print(f"Fetching anime page: {url}")
+    print(f"Fetching anime page with Selenium: {url}")
     try:
-        cookie = get_ddg_cookies(url)
-        print(f"Cookie obtained: {cookie}")
-        session.cookies.set('__ddg2', cookie, domain='.animepahe.si')  # type: ignore
-        response = session.get(url)
-        print(f"Response status: {response.status_code}")
-        if response.status_code != 200:
-            print(f"Response text: {response.text[:500]}")
-            return []
-        soup = BeautifulSoup(response.text, 'html.parser')
+        driver.get(url)
+        # Wait for page to load, perhaps check for a specific element
+        import time
+        time.sleep(5)  # Wait for JS to execute
+        page_source = driver.page_source
+        driver.quit()
+        soup = BeautifulSoup(page_source, 'html.parser')
         ep_list = []
         for a in soup.find_all('a', href=True):
             if '/play/' in a['href'] and siteLink in a['href']:
@@ -93,6 +84,7 @@ def get_episodes(siteLink: str) -> List[Dict[str, Union[int, str]]]:
         return sorted(ep_list, key=lambda x: x['number'])
     except Exception as e:
         print(f"Exception: {e}")
+        driver.quit()
         return []
 
 def get_download_options(ep_link: str) -> List[Dict[str, str]]:
