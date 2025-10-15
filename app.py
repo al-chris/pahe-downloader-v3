@@ -14,7 +14,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 # Global download status
-download_status = {
+download_status: dict[str, Union[bool, int, str, float]] = {
     'is_downloading': False,
     'progress': 0,
     'current_episode': 0,
@@ -364,7 +364,7 @@ def download_selected():
 
     # Initialize download status
     global download_status
-    download_status: dict[str, Union[bool, int, str]] = {
+    download_status = {
         'is_downloading': True,
         'progress': 0,
         'current_episode': 0,
@@ -450,7 +450,7 @@ def process_downloads(selected_eps: List[Episode]) -> None:
                             downloaded += len(chunk)
                             if total_size > 0:
                                 episode_progress = (downloaded / total_size) * 100
-                                overall_progress = ((ep['number'] - 1) / len(selected_eps) * 100) + (episode_progress / len(selected_eps))
+                                overall_progress = ((int(ep['number']) - 1) / len(selected_eps) * 100) + (episode_progress / len(selected_eps))
                                 download_status['progress'] = min(overall_progress, 90)
             print(f"DEBUG: Successfully downloaded {filename}")
         except Exception as e:
