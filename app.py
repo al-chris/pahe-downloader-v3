@@ -9,6 +9,9 @@ from typing import List, Dict, Optional, Union, TypedDict
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 class Episode(TypedDict):
     number: int
@@ -64,16 +67,19 @@ def get_episodes(siteLink: str) -> List[Dict[str, Union[int, str]]]:
     print(f"Fetching anime page with Selenium: {url}")
     try:
         driver.get(url)
-        # Wait for page to load, perhaps check for a specific element
-        import time
-        time.sleep(5)  # Wait for JS to execute
+        # Wait for episode links to load
+        wait = WebDriverWait(driver, 30)
+        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "a[href*='/play/']")))
         page_source = driver.page_source
         driver.quit()
         soup = BeautifulSoup(page_source, 'html.parser')
+        print(f"Page title: {soup.title.text if soup.title else 'No title'}")
+        print(f"Total a tags: {len(soup.find_all('a'))}")
         ep_list = []
         for a in soup.find_all('a', href=True):
             if '/play/' in a['href'] and siteLink in a['href']:
                 text = a.get_text().strip()
+                print(f"Found episode link: {a['href']}, text: '{text}'")
                 if text.startswith('Episode '):
                     try:
                         ep_num = int(text.split()[1])
