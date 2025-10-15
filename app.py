@@ -145,11 +145,33 @@ def get_download_options(ep_link: str) -> List[Dict[str, str]]:
         soup = BeautifulSoup(page_source, 'html.parser')
         options_list = []
         for a in soup.find_all('a', class_='dropdown-item'):
-            text = a.get_text()
-            if 'p' in text and 'MB' in text:
-                res = text.split()[0]
-                url = a['href']
-                options_list.append({'res': res, 'url': url})
+            text = a.get_text().strip()
+            print(f"DEBUG: Found download option: '{text}'")
+            url = a['href']
+
+            # Parse the text format like "SubsPlease · 720p" or "Yameii · 1080p"
+            if '·' in text:
+                parts = text.split('·')
+                if len(parts) >= 2:
+                    group = parts[0].strip()
+                    quality = parts[1].strip()
+                    # Extract resolution (e.g., "720p" -> "720")
+                    if quality.endswith('p'):
+                        res = quality[:-1]  # Remove 'p'
+                        options_list.append({'res': res, 'url': url, 'group': group})
+                        print(f"DEBUG: Parsed option - Group: {group}, Res: {res}p, URL: {url}")
+            else:
+                # Fallback for other formats
+                if 'p' in text.lower():
+                    # Try to extract resolution from text
+                    import re
+                    res_match = re.search(r'(\d+)p', text.lower())
+                    if res_match:
+                        res = res_match.group(1)
+                        options_list.append({'res': res, 'url': url, 'group': text.split()[0] if text.split() else text})
+                        print(f"DEBUG: Fallback parsed option - Res: {res}p, URL: {url}")
+
+        print(f"DEBUG: Total download options found: {len(options_list)}")
         return options_list
     except Exception as e:
         print(f"Exception in get_download_options: {e}")
@@ -273,34 +295,57 @@ def process_downloads(selected_eps):
     os.makedirs(download_dir, exist_ok=True)
 
     def download_ep(ep: Dict[str, Union[int, str]]) -> None:
-        print(f"Processing episode {ep['number']}: {ep['link']}")
+        print(f"DEBUG: Processing episode {ep['number']}: {ep['link']}")
         options = get_download_options(str(ep['link']))
-        print(f"Download options: {options}")
+        print(f"DEBUG: Download options: {options}")
+
+        if not options:
+            print(f"DEBUG: No download options found for episode {ep['number']}")
+            return
+
         pahe_url = None
-        for opt in options:
-            if '720' in opt['res']:
-                pahe_url = opt['url']
+
+        # Prefer 720p, but fall back to highest available quality
+        preferred_resolutions = ['720', '1080', '480', '360']
+        for pref_res in preferred_resolutions:
+            for opt in options:
+                if opt['res'] == pref_res:
+                    pahe_url = opt['url']
+                    print(f"DEBUG: Selected {pref_res}p option: {pahe_url}")
+                    break
+            if pahe_url:
                 break
+
+        # If no preferred resolution found, take the first available
+        if not pahe_url and options:
+            pahe_url = options[0]['url']
+            print(f"DEBUG: No preferred resolution found, using: {pahe_url}")
+
         if not pahe_url:
-            print("No 720p option found")
+            print(f"DEBUG: No download URL found for episode {ep['number']}")
             return
-        print(f"Pahe URL: {pahe_url}")
+
+        print(f"DEBUG: Getting download link from: {pahe_url}")
         download_url = get_download_link(pahe_url)
-        print(f"Download URL: {download_url}")
+        print(f"DEBUG: Final download URL: {download_url}")
+
         if not download_url:
-            print("No download URL obtained")
+            print(f"DEBUG: No download URL obtained for episode {ep['number']}")
             return
+
         filename = f"ep_{str(ep['number'])}.mp4"
         filepath = os.path.join(download_dir, filename)
+        print(f"DEBUG: Downloading to: {filepath}")
+
         try:
             with requests.get(download_url, stream=True, timeout=30) as r:
                 r.raise_for_status()
                 with open(filepath, 'wb') as f:
                     for chunk in r.iter_content(chunk_size=8192):
                         f.write(chunk)
-            print(f"Downloaded {filename}")
+            print(f"DEBUG: Successfully downloaded {filename}")
         except Exception as e:
-            print(f"Download failed for {filename}: {e}")
+            print(f"DEBUG: Download failed for {filename}: {e}")
 
     threads: List[threading.Thread] = []
     for ep in selected_eps:
@@ -321,7 +366,12 @@ def process_downloads(selected_eps):
 def check_download():
     zip_path = 'downloads.zip'
     if os.path.exists(zip_path):
-        return send_file(zip_path, as_attachment=True, download_name='anime_episodes.zip')
+        if request.method == 'HEAD':
+            # For HEAD requests, just return success status
+            return '', 200, {'Content-Type': 'application/zip', 'Content-Disposition': 'attachment; filename=anime_episodes.zip'}
+        else:
+            # For GET requests, return the actual file
+            return send_file(zip_path, as_attachment=True, download_name='anime_episodes.zip')
     else:
         return "Download not ready yet. Please wait...", 202
 
