@@ -58,7 +58,7 @@ def get_episodes(siteLink: str) -> List[Dict[str, Union[int, str]]]:
     options.headless = True
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
-    service = Service(executable_path='chromedriver_win32/chromedriver.exe')
+    service = Service(executable_path='chromedriver-win64/chromedriver.exe')
     driver = webdriver.Chrome(service=service, options=options)
     url = f"https://animepahe.si/anime/{siteLink}"
     print(f"Fetching anime page with Selenium: {url}")
