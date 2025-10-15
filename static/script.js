@@ -48,27 +48,33 @@ document.addEventListener('DOMContentLoaded', function() {
     if (urlInput && downloadForm) {
         downloadForm.addEventListener('submit', function(e) {
             const url = urlInput.value.trim();
+            console.log('Form submit triggered with URL:', url);
+
             if (!url) {
+                console.log('Validation failed: empty URL');
                 e.preventDefault();
                 showAlert('Please enter an anime URL', 'error');
                 return;
             }
 
             // More flexible URL validation - allow various animepahe domains
-            const animepaheRegex = /animepahe\.(si|ru|com|org|net)/i;
-            if (!animepaheRegex.test(url)) {
-                e.preventDefault();
-                showAlert('Please enter a valid AnimePahe URL (animepahe.si, animepahe.ru, etc.)', 'warning');
-                return;
+            const animepaheRegex = /animepahe\./i;
+            const hasAnimepahe = animepaheRegex.test(url);
+            const hasAnimePath = url.includes('/anime/');
+
+            if (!hasAnimepahe) {
+                console.log('Validation warning: URL does not contain animepahe');
+                // Show warning but allow submission
+                showAlert('Warning: This doesn\'t look like an AnimePahe URL. Proceeding anyway...', 'warning');
             }
 
-            // Check if URL contains /anime/ path
-            if (!url.includes('/anime/')) {
-                e.preventDefault();
-                showAlert('Please enter a complete anime page URL containing "/anime/"', 'warning');
-                return;
+            if (!hasAnimePath) {
+                console.log('Validation warning: URL does not contain /anime/');
+                // Show warning but allow submission
+                showAlert('Warning: This doesn\'t look like a complete anime page URL. Proceeding anyway...', 'warning');
             }
 
+            console.log('Validation completed, allowing form submission');
             // Show loading state only if validation passes
             const submitBtn = downloadForm.querySelector('button[type="submit"]');
             if (submitBtn) {
@@ -82,7 +88,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (urlInput) {
         urlInput.addEventListener('input', function() {
             const url = this.value.trim();
-            const animepaheRegex = /animepahe\.(si|ru|com|org|net)/i;
+            const animepaheRegex = /animepahe\./i;
 
             if (url.includes('/anime/') && animepaheRegex.test(url)) {
                 this.style.borderColor = 'var(--success-color)';
@@ -152,10 +158,15 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Add loading states to buttons
+    // Add loading states to buttons (but not form submit buttons)
     document.querySelectorAll('.btn').forEach(button => {
         button.addEventListener('click', function() {
-            if (this.form && !this.disabled) {
+            // Don't interfere with form submit buttons - they handle their own loading state
+            if (this.type === 'submit' || (this.form && this.type !== 'button')) {
+                return;
+            }
+
+            if (!this.disabled) {
                 const originalText = this.innerHTML;
                 this.innerHTML = '<div class="spinner"></div> Processing...';
                 this.disabled = true;
