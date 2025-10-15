@@ -35,7 +35,7 @@ jobs:
 
     - name: Build executable
       run: |
-        uv run pyinstaller --onefile --hidden-import=webdriver_manager --hidden-import=selenium --hidden-import=webview --hidden-import=webview.platforms.winforms --hidden-import=clr --hidden-import=pythonnet --hidden-import=flask --hidden-import=beautifulsoup4 --hidden-import=lxml --hidden-import=requests --hidden-import=urllib3 --name=pahe-downloader --clean --noconsole main.py
+        uv run pyinstaller --onefile --hidden-import=webdriver_manager --hidden-import=selenium --hidden-import=webview --hidden-import=webview.platforms.winforms --hidden-import=clr --hidden-import=pythonnet --hidden-import=flask --hidden-import=beautifulsoup4 --hidden-import=lxml --hidden-import=requests --hidden-import=urllib3 --name=pahe-downloader --clean --noconsole --icon=static/icon.png main.py
 
     - name: Verify executable exists
       run: |

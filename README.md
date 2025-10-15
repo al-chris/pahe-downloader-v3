@@ -143,11 +143,11 @@ python build.py
 # Install PyInstaller
 pip install pyinstaller
 
-# Build the executable
-pyinstaller --onefile --hidden-import=webdriver_manager --hidden-import=selenium --hidden-import=webview --hidden-import=webview.platforms.winforms --hidden-import=clr --hidden-import=pythonnet --hidden-import=flask --hidden-import=beautifulsoup4 --hidden-import=lxml --hidden-import=requests --hidden-import=urllib3 --name=pahe-downloader --clean --noconsole main.py
+# Build the executable with custom icon
+pyinstaller --onefile --hidden-import=webdriver_manager --hidden-import=selenium --hidden-import=webview --hidden-import=webview.platforms.winforms --hidden-import=clr --hidden-import=pythonnet --hidden-import=flask --hidden-import=beautifulsoup4 --hidden-import=lxml --hidden-import=requests --hidden-import=urllib3 --name=pahe-downloader --clean --noconsole --icon=static/icon.png main.py
 ```
 
-The executable will be created in the `dist/` folder as `pahe-downloader.exe`.
+The executable will be created in the `dist/` folder as `pahe-downloader.exe` with the custom application icon.
 
 #### Automated Releases
 
@@ -165,7 +165,7 @@ The project includes automated CI/CD that builds releases:
 - **Trigger**: Creating a new release on GitHub automatically starts the build process
 - **Platform**: Windows executables (built on `windows-latest` runners)
 - **Artifacts**: 
-  - `pahe-downloader.exe` - The standalone executable
+  - `pahe-downloader.exe` - The standalone executable with custom icon
   - `pahe-downloader.exe.sha256` - SHA256 checksum for verification
 - **Manual Trigger**: You can also trigger builds manually using the "Run workflow" button
 

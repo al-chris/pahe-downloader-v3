@@ -33,6 +33,7 @@ def build_executable():
         "--name=pahe-downloader",
         "--clean",
         "--noconsole",
+        "--icon=static/icon.png",
         "main.py"
     ]
 
