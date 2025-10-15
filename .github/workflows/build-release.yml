@@ -21,9 +21,8 @@ jobs:
       with:
         python-version: '3.11'
 
-    - name: Install uv
-      run: |
-        curl -LsSf https://astral.sh/uv/install.ps1 | powershell
+    - name: Set up uv
+      uses: astral-sh/setup-uv@v1
 
     - name: Install dependencies
       run: |
