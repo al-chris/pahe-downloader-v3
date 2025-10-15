@@ -20,6 +20,7 @@ class Episode(TypedDict):
 class DownloadOption(TypedDict):
     res: str
     url: str
+    group: str
 
 app = Flask(__name__)
 
@@ -56,9 +57,9 @@ def decrypt(full_string: str, key: str, v1: str, v2: str) -> str:
         i += 1
     return r
 
-def get_episodes(siteLink: str, domain: str = "animepahe.si") -> List[Dict[str, Union[int, str]]]:
+def get_episodes(siteLink: str, domain: str = "animepahe.si") -> List[Episode]:
     options = Options()
-    options.headless = True
+    options.add_argument("--headless")
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--disable-gpu')
@@ -90,7 +91,7 @@ def get_episodes(siteLink: str, domain: str = "animepahe.si") -> List[Dict[str, 
         print(f"DEBUG: Page title: {soup.title.text if soup.title else 'No title'}")
         print(f"DEBUG: Total a tags: {len(soup.find_all('a'))}")
 
-        ep_list = []
+        ep_list: List[Episode] = []
         for a in soup.find_all('a', href=True):
             if '/play/' in a['href'] and siteLink in a['href']:
                 text = a.get_text().strip()
@@ -103,18 +104,18 @@ def get_episodes(siteLink: str, domain: str = "animepahe.si") -> List[Dict[str, 
                         end = text.find(' Online')
                         if start > 2 and end > start:
                             ep_num = int(text[start:end])
-                            ep_link = f'https://{domain}' + a['href']
+                            ep_link = f'https://{domain}' + str(a['href'])
                             ep_list.append({'number': ep_num, 'link': ep_link})
-                    except ValueError as e:
-                        print(f"DEBUG: Failed to parse episode number from '{text}': {e}")
+                    except ValueError:
+                        print(f"DEBUG: Failed to parse episode number from '{text}'")
                         pass
                 elif text.startswith('Episode '):
                     try:
                         ep_num = int(text.split()[1])
-                        ep_link = f'https://{domain}' + a['href']
+                        ep_link = f'https://{domain}' + str(a['href'])
                         ep_list.append({'number': ep_num, 'link': ep_link})
-                    except (ValueError, IndexError) as e:
-                        print(f"DEBUG: Failed to parse episode number from '{text}': {e}")
+                    except (ValueError, IndexError):
+                        print(f"DEBUG: Failed to parse episode number from '{text}'")
                         pass
 
         print(f"DEBUG: Episodes found: {len(ep_list)}")
@@ -128,9 +129,9 @@ def get_episodes(siteLink: str, domain: str = "animepahe.si") -> List[Dict[str, 
             pass
         return []
 
-def get_download_options(ep_link: str) -> List[Dict[str, str]]:
+def get_download_options(ep_link: str) -> List[DownloadOption]:
     options = Options()
-    options.headless = True
+    options.add_argument("--headless")
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     service = Service(executable_path='chromedriver-win64/chromedriver.exe')
@@ -181,7 +182,7 @@ def get_download_options(ep_link: str) -> List[Dict[str, str]]:
         page_source = driver.page_source
         driver.quit()
         soup = BeautifulSoup(page_source, 'html.parser')
-        options_list = []
+        options_list: List[DownloadOption] = []
         for a in soup.find_all('a', class_='dropdown-item'):
             text = a.get_text().strip()
             print(f"DEBUG: Found download option: '{text}'")
@@ -203,7 +204,7 @@ def get_download_options(ep_link: str) -> List[Dict[str, str]]:
                     if res_match:
                         res = res_match.group(1)
                         print(f"DEBUG: Extracted resolution: {res}")
-                        options_list.append({'res': res, 'url': url, 'group': group})
+                        options_list.append({'res': res, 'url': str(url), 'group': group})
                         print(f"DEBUG: Parsed option - Group: {group}, Res: {res}p, URL: {url}")
                     else:
                         print(f"DEBUG: Could not extract resolution from: '{quality_part}' - no regex match")
@@ -241,7 +242,11 @@ def get_download_link(pahe_win_url: str) -> Optional[str]:
         continue_link = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.XPATH, "//a[contains(text(), 'Continue')]"))
         )
-        redirect_url = continue_link.get_attribute('href')
+        redirect_url = continue_link.get_attribute('href')  # type: ignore
+        if redirect_url is None:
+            print("DEBUG: No redirect URL found")
+            driver.quit()
+            return None
         print(f"DEBUG: Found redirect URL: {redirect_url}")
 
         driver.quit()
@@ -339,7 +344,7 @@ def download_selected():
         if not anime_id:
             return "Invalid URL format."
 
-    except Exception as e:
+    except Exception:
         return "Invalid URL format."
 
     episodes = get_episodes(anime_id, domain)
@@ -353,7 +358,7 @@ def download_selected():
 
     return render_template('downloading.html', episode_count=len(selected_eps))
 
-def process_downloads(selected_eps):
+def process_downloads(selected_eps: List[Episode]) -> None:
     download_dir = 'downloads'
     os.makedirs(download_dir, exist_ok=True)
     print(f"DEBUG: Created downloads directory: {download_dir}")
