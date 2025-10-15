@@ -137,9 +137,47 @@ def get_download_options(ep_link: str) -> List[Dict[str, str]]:
     driver = webdriver.Chrome(service=service, options=options)
     try:
         driver.get(ep_link)
-        # Wait for download options to load
+        print("DEBUG: Loaded episode page, waiting for download options...")
+
+        # Wait for the page to load and find the download dropdown
         wait = WebDriverWait(driver, 30)
+
+        # Try to find and click the download dropdown toggle
+        try:
+            # Look for common dropdown toggle selectors
+            dropdown_selectors = [
+                ".dropdown-toggle",
+                "[data-toggle='dropdown']",
+                ".download-toggle",
+                "button[class*='download']",
+                ".btn-download"
+            ]
+
+            dropdown_clicked = False
+            for selector in dropdown_selectors:
+                try:
+                    dropdown_toggle = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, selector)))
+                    dropdown_toggle.click()
+                    print(f"DEBUG: Clicked dropdown toggle: {selector}")
+                    dropdown_clicked = True
+                    break
+                except:
+                    continue
+
+            if not dropdown_clicked:
+                print("DEBUG: Could not find dropdown toggle, proceeding without clicking")
+
+        except Exception as e:
+            print(f"DEBUG: Error clicking dropdown: {e}")
+
+        # Wait a bit for options to load
+        import time
+        time.sleep(2)
+
+        # Wait for download options to load
         wait.until(EC.presence_of_element_located((By.CLASS_NAME, "dropdown-item")))
+        print("DEBUG: Download options found")
+
         page_source = driver.page_source
         driver.quit()
         soup = BeautifulSoup(page_source, 'html.parser')
@@ -149,27 +187,31 @@ def get_download_options(ep_link: str) -> List[Dict[str, str]]:
             print(f"DEBUG: Found download option: '{text}'")
             url = a['href']
 
-            # Parse the text format like "SubsPlease · 720p" or "Yameii · 1080p"
+            # Parse the text format like "SubsPlease · 720p (88MB)" or "Yameii · 1080p (139MB) eng"
             if '·' in text:
                 parts = text.split('·')
                 if len(parts) >= 2:
                     group = parts[0].strip()
-                    quality = parts[1].strip()
-                    # Extract resolution (e.g., "720p" -> "720")
-                    if quality.endswith('p'):
-                        res = quality[:-1]  # Remove 'p'
-                        options_list.append({'res': res, 'url': url, 'group': group})
-                        print(f"DEBUG: Parsed option - Group: {group}, Res: {res}p, URL: {url}")
-            else:
-                # Fallback for other formats
-                if 'p' in text.lower():
-                    # Try to extract resolution from text
+                    quality_part = parts[1].strip()
+                    print(f"DEBUG: Parsing - Group: '{group}', Quality part: '{quality_part}'")
+
+                    # Extract resolution from quality part (e.g., "720p (88MB)" -> "720")
                     import re
-                    res_match = re.search(r'(\d+)p', text.lower())
+                    print(f"DEBUG: Searching for resolution in: '{quality_part}'")
+                    res_match = re.search(r'(\d+)p', quality_part)
+                    print(f"DEBUG: Regex match result: {res_match}")
                     if res_match:
                         res = res_match.group(1)
-                        options_list.append({'res': res, 'url': url, 'group': text.split()[0] if text.split() else text})
-                        print(f"DEBUG: Fallback parsed option - Res: {res}p, URL: {url}")
+                        print(f"DEBUG: Extracted resolution: {res}")
+                        options_list.append({'res': res, 'url': url, 'group': group})
+                        print(f"DEBUG: Parsed option - Group: {group}, Res: {res}p, URL: {url}")
+                    else:
+                        print(f"DEBUG: Could not extract resolution from: '{quality_part}' - no regex match")
+                else:
+                    print(f"DEBUG: Not enough parts after splitting '{text}' by '·'")
+            else:
+                # Fallback for other formats
+                print(f"DEBUG: Option doesn't contain '·': '{text}'")
 
         print(f"DEBUG: Total download options found: {len(options_list)}")
         return options_list
@@ -293,6 +335,8 @@ def download_selected():
 def process_downloads(selected_eps):
     download_dir = 'downloads'
     os.makedirs(download_dir, exist_ok=True)
+    print(f"DEBUG: Created downloads directory: {download_dir}")
+    print(f"DEBUG: Processing {len(selected_eps)} episodes")
 
     def download_ep(ep: Dict[str, Union[int, str]]) -> None:
         print(f"DEBUG: Processing episode {ep['number']}: {ep['link']}")
@@ -357,10 +401,20 @@ def process_downloads(selected_eps):
 
     # Create ZIP file
     zip_path = 'downloads.zip'
+    files_to_zip = os.listdir(download_dir)
+    print(f"DEBUG: Files in downloads directory: {files_to_zip}")
+
     with zipfile.ZipFile(zip_path, 'w') as zf:
-        for file in os.listdir(download_dir):
-            zf.write(os.path.join(download_dir, file), file)
-    print("ZIP file created successfully")
+        for file in files_to_zip:
+            file_path = os.path.join(download_dir, file)
+            if os.path.isfile(file_path):
+                zf.write(file_path, file)
+                print(f"DEBUG: Added {file} to ZIP")
+            else:
+                print(f"DEBUG: Skipping {file} (not a file)")
+
+    zip_size = os.path.getsize(zip_path) if os.path.exists(zip_path) else 0
+    print(f"DEBUG: ZIP file created successfully, size: {zip_size} bytes")
 
 @app.route('/check_download')
 def check_download():
