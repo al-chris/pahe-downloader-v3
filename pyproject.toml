@@ -3,7 +3,7 @@ name = "pahe-downloader"
 version = "0.1.0"
 description = "Web app to download anime episodes from animepahe.si"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.11"
 dependencies = [
     "flask",
     "requests",
