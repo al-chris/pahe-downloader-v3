@@ -12,7 +12,6 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
 import time
 import queue
 import atexit
@@ -55,7 +54,7 @@ class BrowserManager:
         options.add_argument("--disable-renderer-backgrounding")
         options.add_argument("--disable-backgrounding-occluded-windows")
 
-        service = Service(ChromeDriverManager().install())
+        service = Service(executable_path='chromedriver-win64/chromedriver.exe')
         self.driver = webdriver.Chrome(service=service, options=options)
         self.operation_count = 0
         print("DEBUG: BrowserManager initialized new Chrome driver")
@@ -180,6 +179,7 @@ download_status: dict[str, Union[bool, int, str, float]] = {
 class Episode(TypedDict):
     number: int
     link: str
+    anime_name: str
 
 class DownloadOption(TypedDict):
     res: str
@@ -238,6 +238,22 @@ def get_episodes_task(driver: webdriver.Chrome, siteLink: str, domain: str = "an
 
     soup = BeautifulSoup(page_source, 'html.parser')
     print(f"DEBUG: Page title: {soup.title.text if soup.title else 'No title'}")
+    
+    # Extract anime name from title (remove " - Anime-Planet" or similar suffixes)
+    anime_name = "Unknown Anime"
+    if soup.title:
+        title_text = soup.title.text.strip()
+        # Remove common suffixes
+        for suffix in [" - Anime-Planet", " | Anime-Planet", " - Watch Online", " | Watch Online"]:
+            if suffix in title_text:
+                title_text = title_text.replace(suffix, "").strip()
+        # Take the main title (before any episode info)
+        if " Episode " in title_text:
+            anime_name = title_text.split(" Episode ")[0].strip()
+        else:
+            anime_name = title_text
+    
+    print(f"DEBUG: Extracted anime name: {anime_name}")
     print(f"DEBUG: Total a tags: {len(soup.find_all('a'))}")
 
     ep_list: List[Episode] = []
@@ -254,7 +270,7 @@ def get_episodes_task(driver: webdriver.Chrome, siteLink: str, domain: str = "an
                     if start > 2 and end > start:
                         ep_num = int(text[start:end])
                         ep_link = f'https://{domain}' + str(a['href'])
-                        ep_list.append({'number': ep_num, 'link': ep_link})
+                        ep_list.append({'number': ep_num, 'link': ep_link, 'anime_name': anime_name})
                 except ValueError:
                     print(f"DEBUG: Failed to parse episode number from '{text}'")
                     pass
@@ -262,7 +278,7 @@ def get_episodes_task(driver: webdriver.Chrome, siteLink: str, domain: str = "an
                 try:
                     ep_num = int(text.split()[1])
                     ep_link = f'https://{domain}' + str(a['href'])
-                    ep_list.append({'number': ep_num, 'link': ep_link})
+                    ep_list.append({'number': ep_num, 'link': ep_link, 'anime_name': anime_name})
                 except (ValueError, IndexError):
                     print(f"DEBUG: Failed to parse episode number from '{text}'")
                     pass
@@ -519,7 +535,7 @@ def process_downloads(selected_eps: List[Episode]) -> None:
 
     download_status['status_message'] = f'Processing {len(selected_eps)} episodes...'
 
-    def download_ep(ep: Dict[str, Union[int, str]]) -> None:
+    def download_ep(ep: Episode) -> None:
         global download_status
         print(f"DEBUG: Processing episode {ep['number']}: {ep['link']}")
         download_status['status_message'] = f'Finding download options for episode {ep["number"]}...'
@@ -565,7 +581,10 @@ def process_downloads(selected_eps: List[Episode]) -> None:
 
         download_status['current_episode'] = ep['number']
         download_status['status_message'] = f'Downloading episode {ep["number"]}...'
-        filename = f"ep_{str(ep['number'])}.mp4"
+        
+        # Sanitize anime name for filename (remove invalid characters)
+        safe_anime_name = "".join(c for c in ep['anime_name'] if c.isalnum() or c in (' ', '-', '_')).rstrip()
+        filename = f"{safe_anime_name}_Episode_{str(ep['number'])}.mp4"
         filepath = os.path.join(download_dir, filename)
         print(f"DEBUG: Downloading to: {filepath}")
 

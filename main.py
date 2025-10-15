@@ -32,7 +32,7 @@ if __name__ == "__main__":
         time.sleep(2)
         
         # Create PyWebView window
-        window = webview.create_window(
+        window = webview.create_window(  # type: ignore
             'Pahe Downloader',
             'http://127.0.0.1:5000',
             width=1200,
