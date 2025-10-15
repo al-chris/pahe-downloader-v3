@@ -3,14 +3,60 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Anime Downloader</title>
+    <title>Anime Downloader - Download Your Favorite Anime</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
 </head>
 <body>
-    <h1>Download Anime Episodes</h1>
-    <form action="/download" method="post">
-        <label for="url">Anime URL (e.g., https://animepahe.si/anime/aa5d4cc0-ee27-7f78-e72d-2a50f50edb81):</label><br>
-        <input type="text" id="url" name="url" size="100" required><br><br>
-        <button type="submit">Download All Episodes (720p)</button>
-    </form>
+    <div class="container">
+        <header class="header">
+            <h1>🎬 Anime Downloader</h1>
+            <p>Download your favorite anime episodes from AnimePahe with ease</p>
+        </header>
+
+        <div class="card">
+            <form id="download-form" action="/download" method="post">
+                <div class="form-group">
+                    <label for="anime-url">
+                        Anime URL
+                        <span data-tooltip="Paste the full URL from animepahe.si/anime/...">ℹ️</span>
+                    </label>
+                    <input
+                        type="url"
+                        id="anime-url"
+                        name="url"
+                        placeholder="https://animepahe.si/anime/aa5d4cc0-ee27-7f78-e72d-2a50f50edb81"
+                        required
+                        autocomplete="off"
+                    >
+                    <small style="color: var(--text-muted); margin-top: 0.5rem; display: block;">
+                        Example: https://animepahe.si/anime/your-anime-id
+                    </small>
+                </div>
+
+                <button type="submit" class="btn btn-primary">
+                    🚀 Start Download Process
+                </button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h3 style="margin-bottom: 1rem; color: var(--text-color);">How to Use:</h3>
+            <ol style="color: var(--text-muted); line-height: 1.8;">
+                <li>Find your favorite anime on <a href="https://animepahe.si" target="_blank" style="color: var(--primary-color);">AnimePahe</a></li>
+                <li>Copy the anime page URL from your browser's address bar</li>
+                <li>Paste the URL above and click "Start Download Process"</li>
+                <li>Select the episodes you want to download</li>
+                <li>Wait for the download to complete and enjoy your anime!</li>
+            </ol>
+        </div>
+
+        <footer class="footer">
+            <p>Built with ❤️ for anime fans | Downloads are processed in 720p quality</p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>

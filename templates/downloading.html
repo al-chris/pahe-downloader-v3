@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Downloading - Anime Downloader</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>⚡ Downloading Episodes</h1>
+            <p>Please wait while we download your selected episodes...</p>
+        </header>
+
+        <div class="card">
+            <div class="progress-container">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress-fill" style="width: 0%;"></div>
+                </div>
+                <div class="progress-text" id="progress-text">Initializing download...</div>
+            </div>
+
+            <div id="status-container">
+                <div class="alert alert-success">
+                    <span>📦 Preparing to download {{ episode_count }} episode(s)</span>
+                </div>
+            </div>
+
+            <div style="text-align: center; margin-top: 2rem;">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <span style="color: var(--text-muted);">This process may take several minutes...</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3 style="margin-bottom: 1rem; color: var(--text-color);">📋 What's happening:</h3>
+            <ul style="color: var(--text-muted); line-height: 1.8;">
+                <li>🔍 Finding download links for each episode</li>
+                <li>📥 Downloading episodes in 720p quality</li>
+                <li>📦 Packaging everything into a ZIP file</li>
+                <li>⬇️ Preparing your download</li>
+            </ul>
+        </div>
+
+        <footer class="footer">
+            <p>Built with ❤️ for anime fans | Downloads are processed in 720p quality</p>
+        </footer>
+    </div>
+
+    <script>
+        // Check download status
+        let progress = 0;
+        const progressFill = document.getElementById('progress-fill');
+        const progressText = document.getElementById('progress-text');
+        const statusContainer = document.getElementById('status-container');
+
+        const messages = [
+            'Initializing download...',
+            'Finding episode links...',
+            'Preparing download queue...',
+            'Starting downloads...',
+            'Downloading episodes...',
+            'Almost done...',
+            'Packaging files...',
+            'Preparing ZIP file...'
+        ];
+
+        let messageIndex = 0;
+        const progressInterval = setInterval(() => {
+            progress += Math.random() * 8 + 2; // Random progress between 2-10%
+            if (progress >= 95) {
+                progress = 95;
+                progressText.textContent = 'Finalizing... Please wait...';
+                clearInterval(progressInterval);
+            } else {
+                if (messageIndex < messages.length - 1 && progress > (messageIndex + 1) * (100 / messages.length)) {
+                    messageIndex++;
+                }
+                progressText.textContent = messages[messageIndex];
+            }
+            progressFill.style.width = `${Math.min(progress, 95)}%`;
+        }, 1000);
+
+        // Check if download is complete
+        const checkComplete = setInterval(() => {
+            fetch('/check_download', { method: 'HEAD' })
+                .then(response => {
+                    if (response.status === 200 && response.headers.get('content-type') === 'application/zip') {
+                        clearInterval(checkComplete);
+                        clearInterval(progressInterval);
+                        progressFill.style.width = '100%';
+                        progressText.textContent = 'Download ready! Starting download...';
+
+                        // Small delay before redirecting to show completion
+                        setTimeout(() => {
+                            window.location.href = '/check_download';
+                        }, 1000);
+                    }
+                })
+                .catch(() => {
+                    // Still processing
+                });
+        }, 3000);
+
+        // Auto-refresh after 10 minutes as fallback
+        setTimeout(() => {
+            clearInterval(checkComplete);
+            clearInterval(progressInterval);
+            statusContainer.innerHTML = '<div class="alert alert-warning"><span>Download is taking longer than expected. Please check back later or refresh the page.</span></div>';
+        }, 600000);
+    </script>
+</body>
+</html>

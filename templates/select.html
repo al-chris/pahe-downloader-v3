@@ -3,18 +3,72 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Select Episodes</title>
+    <title>Select Episodes - Anime Downloader</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
 </head>
 <body>
-    <h1>Select Episodes to Download</h1>
-    <form action="/download_selected" method="post">
-        <input type="hidden" name="url" value="{{ url }}">
-        {% for ep in episodes %}
-        <input type="checkbox" id="ep{{ ep.number }}" name="selected" value="{{ ep.number }}" checked>
-        <label for="ep{{ ep.number }}">Episode {{ ep.number }}</label><br>
-        {% endfor %}
-        <br>
-        <button type="submit">Download Selected Episodes</button>
-    </form>
+    <div class="container">
+        <header class="header">
+            <h1>🎯 Select Episodes</h1>
+            <p>Choose which episodes you want to download</p>
+        </header>
+
+        <div class="card">
+            <div class="select-all">
+                <label for="select-all">
+                    <input type="checkbox" id="select-all" checked>
+                    <span style="font-weight: 600;">Select All Episodes</span>
+                    <small style="color: var(--text-muted); margin-left: 0.5rem;">
+                        ({{ episodes|length }} episodes available)
+                    </small>
+                </label>
+            </div>
+
+            <form id="download-selected-form" action="/download_selected" method="post">
+                <input type="hidden" name="url" value="{{ url }}">
+
+                <div class="episode-grid">
+                    {% for ep in episodes %}
+                    <div class="episode-card selected">
+                        <input type="checkbox" id="ep{{ ep.number }}" name="selected" value="{{ ep.number }}" class="episode-checkbox" checked>
+                        <div class="episode-info">
+                            <div class="episode-number">Episode {{ ep.number }}</div>
+                            <div class="episode-status">Ready to download</div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <div class="progress-container" style="display: none;">
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: 0%;"></div>
+                    </div>
+                    <div class="progress-text">Preparing download...</div>
+                </div>
+
+                <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 2rem;">
+                    📥 Download Selected Episodes
+                </button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h3 style="margin-bottom: 1rem; color: var(--text-color);">💡 Tips:</h3>
+            <ul style="color: var(--text-muted); line-height: 1.8;">
+                <li>All downloads are in 720p quality for optimal balance of quality and file size</li>
+                <li>You can use Ctrl+A to quickly toggle all episode selections</li>
+                <li>Downloads will be packaged into a ZIP file for easy organization</li>
+                <li>The process may take several minutes depending on the number of episodes</li>
+            </ul>
+        </div>
+
+        <footer class="footer">
+            <p>Built with ❤️ for anime fans | Downloads are processed in 720p quality</p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>

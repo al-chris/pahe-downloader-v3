@@ -111,7 +111,7 @@ def get_download_options(ep_link: str) -> List[Dict[str, str]]:
     options.headless = True
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
-    service = Service(executable_path='chromedriver_win32/chromedriver.exe')
+    service = Service(executable_path='chromedriver-win64/chromedriver.exe')
     driver = webdriver.Chrome(service=service, options=options)
     try:
         driver.get(ep_link)
@@ -201,10 +201,17 @@ def download_selected():
     selected = request.form.getlist('selected')
     selected_nums = [int(s) for s in selected]
     selected_eps = [ep for ep in episodes if ep['number'] in selected_nums]
-    print(f"Selected episodes: {selected_eps}")
+
+    # Start download in background thread
+    download_thread = threading.Thread(target=process_downloads, args=(selected_eps,))
+    download_thread.start()
+
+    return render_template('downloading.html', episode_count=len(selected_eps))
+
+def process_downloads(selected_eps):
     download_dir = 'downloads'
     os.makedirs(download_dir, exist_ok=True)
-    
+
     def download_ep(ep: Dict[str, Union[int, str]]) -> None:
         print(f"Processing episode {ep['number']}: {ep['link']}")
         options = get_download_options(str(ep['link']))
@@ -234,7 +241,7 @@ def download_selected():
             print(f"Downloaded {filename}")
         except Exception as e:
             print(f"Download failed for {filename}: {e}")
-    
+
     threads: List[threading.Thread] = []
     for ep in selected_eps:
         t = threading.Thread(target=download_ep, args=(ep,))
@@ -242,13 +249,21 @@ def download_selected():
         t.start()
     for t in threads:
         t.join()
-    
-    # Zip
+
+    # Create ZIP file
     zip_path = 'downloads.zip'
     with zipfile.ZipFile(zip_path, 'w') as zf:
         for file in os.listdir(download_dir):
             zf.write(os.path.join(download_dir, file), file)
-    return send_file(zip_path, as_attachment=True)
+    print("ZIP file created successfully")
+
+@app.route('/check_download')
+def check_download():
+    zip_path = 'downloads.zip'
+    if os.path.exists(zip_path):
+        return send_file(zip_path, as_attachment=True, download_name='anime_episodes.zip')
+    else:
+        return "Download not ready yet. Please wait...", 202
 
 if __name__ == '__main__':
     app.run(debug=True)
