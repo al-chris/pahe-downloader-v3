@@ -5,7 +5,7 @@ import re
 import os
 import zipfile
 import threading
-from typing import List, Dict, Optional, Union, TypedDict
+from typing import List, Dict, Optional, Union, TypedDict, Callable, Any, Tuple
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
@@ -19,13 +19,13 @@ import atexit
 # Browser Manager for optimized resource usage
 class BrowserManager:
     def __init__(self):
-        self.driver = None
-        self.task_queue = queue.Queue()
+        self.driver: Optional[webdriver.Chrome] = None
+        self.task_queue: queue.Queue[Tuple[int, Callable[..., Any], Tuple[Any, ...], Dict[str, Any]]] = queue.Queue()
         self.max_operations_per_driver = 50  # Restart after this many operations
         self.operation_count = 0
-        self.worker_thread = None
+        self.worker_thread: Optional[threading.Thread] = None
         self.is_running = False
-        self.results = {}  # Store results by task_id
+        self.results: Dict[int, Dict[str, Any]] = {}  # Store results by task_id
         self.task_id_counter = 0
         self._initialize_driver()
         self._start_worker()
@@ -101,7 +101,7 @@ class BrowserManager:
                 print(f"DEBUG: Error quitting driver: {e}")
             self.driver = None
 
-    def execute_task(self, task_func, *args, **kwargs):
+    def execute_task(self, task_func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         """Execute a browser task, handling driver lifecycle"""
         self._restart_driver_if_needed()
 
@@ -118,14 +118,14 @@ class BrowserManager:
             self._quit_driver()
             raise e
 
-    def submit_task(self, task_func, *args, **kwargs):
+    def submit_task(self, task_func: Callable[..., Any], *args: Any, **kwargs: Any) -> int:
         """Submit a task to the queue and return a task ID"""
         task_id = self.task_id_counter
         self.task_id_counter += 1
         self.task_queue.put((task_id, task_func, args, kwargs))
         return task_id
 
-    def get_result(self, task_id, timeout=30):
+    def get_result(self, task_id: int, timeout: float = 30) -> Any:
         """Get the result of a queued task"""
         start_time = time.time()
         while time.time() - start_time < timeout:
@@ -204,7 +204,7 @@ def decrypt(full_string: str, key: str, v1: str, v2: str) -> str:
         i += 1
     return r
 
-def get_episodes_task(driver, siteLink: str, domain: str = "animepahe.si") -> List[Episode]:
+def get_episodes_task(driver: webdriver.Chrome, siteLink: str, domain: str = "animepahe.si") -> List[Episode]:
     """Task function for getting episodes using the shared driver"""
     url = f"https://{domain}/anime/{siteLink}"
     print(f"DEBUG: Fetching anime page with Selenium: {url}")
@@ -262,7 +262,7 @@ def get_episodes(siteLink: str, domain: str = "animepahe.si") -> List[Episode]:
         print(f"DEBUG: Exception in get_episodes: {e}")
         return []
 
-def get_download_options_task(driver, ep_link: str) -> List[DownloadOption]:
+def get_download_options_task(driver: webdriver.Chrome, ep_link: str) -> List[DownloadOption]:
     """Task function for getting download options using the shared driver"""
     driver.get(ep_link)
     print("DEBUG: Loaded episode page, waiting for download options...")
@@ -350,7 +350,7 @@ def get_download_options(ep_link: str) -> List[DownloadOption]:
         print(f"Exception in get_download_options: {e}")
         return []
 
-def get_download_link_task(driver, pahe_win_url: str) -> Optional[str]:
+def get_download_link_task(driver: webdriver.Chrome, pahe_win_url: str) -> Optional[str]:
     """Task function for getting download link redirect URL using the shared driver"""
     print(f"DEBUG: Loading pahe.win page: {pahe_win_url}")
     driver.get(pahe_win_url)
