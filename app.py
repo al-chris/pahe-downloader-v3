@@ -576,18 +576,18 @@ def process_downloads(selected_eps: List[Episode]) -> None:
                 # Suppress SSL warnings for this request
                 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
                 with requests.get(download_url, stream=True, timeout=30, verify=False) as r:
-                        r.raise_for_status()
-                        total_size = int(r.headers.get('content-length', 0))
-                        downloaded = 0
-                        with open(filepath, 'wb') as f:
-                            for chunk in r.iter_content(chunk_size=8192):
-                                if chunk:
-                                    f.write(chunk)
-                                    downloaded += len(chunk)
-                                    if total_size > 0:
-                                        episode_progress = (downloaded / total_size) * 100
-                                        overall_progress = ((int(ep['number']) - 1) / len(selected_eps) * 100) + (episode_progress / len(selected_eps))
-                                        download_status['progress'] = min(overall_progress, 90)
+                    r.raise_for_status()
+                    total_size = int(r.headers.get('content-length', 0))
+                    downloaded = 0
+                    with open(filepath, 'wb') as f:
+                        for chunk in r.iter_content(chunk_size=8192):
+                            if chunk:
+                                f.write(chunk)
+                                downloaded += len(chunk)
+                                if total_size > 0:
+                                    episode_progress = (downloaded / total_size) * 100
+                                    overall_progress = ((int(ep['number']) - 1) / len(selected_eps) * 100) + (episode_progress / len(selected_eps))
+                                    download_status['progress'] = min(overall_progress, 90)
                 print(f"DEBUG: Successfully downloaded {filename} (SSL verification disabled)")
         except Exception as e:
             print(f"DEBUG: Download failed for {filename}: {e}")
