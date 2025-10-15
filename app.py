@@ -140,10 +140,25 @@ class BrowserManager:
 
     def cleanup(self):
         """Cleanup resources"""
+        print("DEBUG: Starting BrowserManager cleanup...")
         self.is_running = False
-        if self.worker_thread:
-            self.worker_thread.join(timeout=5)
+        
+        # Wait for queue to finish processing
+        try:
+            self.task_queue.join()
+        except Exception as e:
+            print(f"DEBUG: Error waiting for queue: {e}")
+        
+        # Stop worker thread
+        if self.worker_thread and self.worker_thread.is_alive():
+            try:
+                self.worker_thread.join(timeout=5)
+            except Exception as e:
+                print(f"DEBUG: Error joining worker thread: {e}")
+        
+        # Quit driver
         self._quit_driver()
+        print("DEBUG: BrowserManager cleanup complete")
 
 # Global browser manager instance
 browser_manager = BrowserManager()
@@ -640,6 +655,3 @@ def check_download():
             return send_file(zip_path, as_attachment=True, download_name='anime_episodes.zip')
     else:
         return "Download not ready yet. Please wait...", 202
-
-if __name__ == '__main__':
-    app.run(debug=True)
