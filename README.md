@@ -60,8 +60,9 @@ A modern, beautiful Flask-based web application for downloading anime episodes f
    Navigate to `http://127.0.0.1:5000/`
 
 3. **Enter anime URL:**
-   - Copy the full URL from animepahe.si (e.g., `https://animepahe.si/anime/your-anime-id`)
+   - Copy the full URL from animepahe.si, animepahe.ru, animepahe.com, or other AnimePahe domains
    - The URL field validates input and provides visual feedback
+   - Make sure the URL contains "/anime/" in the path
 
 4. **Select episodes:**
    - View all available episodes in a beautiful grid layout

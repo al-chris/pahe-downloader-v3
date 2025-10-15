@@ -54,13 +54,22 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
-            if (!url.includes('animepahe.si')) {
+            // More flexible URL validation - allow various animepahe domains
+            const animepaheRegex = /animepahe\.(si|ru|com|org|net)/i;
+            if (!animepaheRegex.test(url)) {
                 e.preventDefault();
-                showAlert('Please enter a valid AnimePahe URL', 'warning');
+                showAlert('Please enter a valid AnimePahe URL (animepahe.si, animepahe.ru, etc.)', 'warning');
                 return;
             }
 
-            // Show loading state
+            // Check if URL contains /anime/ path
+            if (!url.includes('/anime/')) {
+                e.preventDefault();
+                showAlert('Please enter a complete anime page URL containing "/anime/"', 'warning');
+                return;
+            }
+
+            // Show loading state only if validation passes
             const submitBtn = downloadForm.querySelector('button[type="submit"]');
             if (submitBtn) {
                 submitBtn.innerHTML = '<div class="spinner"></div> Processing...';
@@ -73,7 +82,9 @@ document.addEventListener('DOMContentLoaded', function() {
     if (urlInput) {
         urlInput.addEventListener('input', function() {
             const url = this.value.trim();
-            if (url.includes('animepahe.si/anime/')) {
+            const animepaheRegex = /animepahe\.(si|ru|com|org|net)/i;
+
+            if (url.includes('/anime/') && animepaheRegex.test(url)) {
                 this.style.borderColor = 'var(--success-color)';
             } else if (url.length > 0) {
                 this.style.borderColor = 'var(--warning-color)';

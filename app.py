@@ -56,30 +56,45 @@ def decrypt(full_string: str, key: str, v1: str, v2: str) -> str:
         i += 1
     return r
 
-def get_episodes(siteLink: str) -> List[Dict[str, Union[int, str]]]:
+def get_episodes(siteLink: str, domain: str = "animepahe.si") -> List[Dict[str, Union[int, str]]]:
     options = Options()
     options.headless = True
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--disable-gpu')
+    options.add_argument('--window-size=1920,1080')
     service = Service(executable_path='chromedriver-win64/chromedriver.exe')
-    driver = webdriver.Chrome(service=service, options=options)
-    url = f"https://animepahe.si/anime/{siteLink}"
-    print(f"Fetching anime page with Selenium: {url}")
+
+    try:
+        driver = webdriver.Chrome(service=service, options=options)
+    except Exception as e:
+        print(f"DEBUG: Failed to initialize Chrome driver: {e}")
+        return []
+
+    url = f"https://{domain}/anime/{siteLink}"
+    print(f"DEBUG: Fetching anime page with Selenium: {url}")
+
     try:
         driver.get(url)
-        # Wait for episode links to load
+        print("DEBUG: Page loaded, waiting for content...")
+
+        # Wait for episode links to load with a longer timeout
         wait = WebDriverWait(driver, 30)
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "a[href*='/play/']")))
+        print("DEBUG: Episode links found")
+
         page_source = driver.page_source
         driver.quit()
+
         soup = BeautifulSoup(page_source, 'html.parser')
-        print(f"Page title: {soup.title.text if soup.title else 'No title'}")
-        print(f"Total a tags: {len(soup.find_all('a'))}")
+        print(f"DEBUG: Page title: {soup.title.text if soup.title else 'No title'}")
+        print(f"DEBUG: Total a tags: {len(soup.find_all('a'))}")
+
         ep_list = []
         for a in soup.find_all('a', href=True):
             if '/play/' in a['href'] and siteLink in a['href']:
                 text = a.get_text().strip()
-                print(f"Found episode link: {a['href']}, text: '{text}'")
+                print(f"DEBUG: Found episode link: {a['href']}, text: '{text}'")
                 # Check for 'Watch - X Online' format
                 if 'Watch' in text and 'Online' in text:
                     try:
@@ -88,22 +103,29 @@ def get_episodes(siteLink: str) -> List[Dict[str, Union[int, str]]]:
                         end = text.find(' Online')
                         if start > 2 and end > start:
                             ep_num = int(text[start:end])
-                            ep_link = 'https://animepahe.si' + a['href']
+                            ep_link = f'https://{domain}' + a['href']
                             ep_list.append({'number': ep_num, 'link': ep_link})
-                    except:
+                    except ValueError as e:
+                        print(f"DEBUG: Failed to parse episode number from '{text}': {e}")
                         pass
                 elif text.startswith('Episode '):
                     try:
                         ep_num = int(text.split()[1])
-                        ep_link = 'https://animepahe.si' + a['href']
+                        ep_link = f'https://{domain}' + a['href']
                         ep_list.append({'number': ep_num, 'link': ep_link})
-                    except:
+                    except (ValueError, IndexError) as e:
+                        print(f"DEBUG: Failed to parse episode number from '{text}': {e}")
                         pass
-        print(f"Episodes found: {len(ep_list)}")
+
+        print(f"DEBUG: Episodes found: {len(ep_list)}")
         return sorted(ep_list, key=lambda x: x['number'])
+
     except Exception as e:
-        print(f"Exception: {e}")
-        driver.quit()
+        print(f"DEBUG: Exception in get_episodes: {e}")
+        try:
+            driver.quit()
+        except:
+            pass
         return []
 
 def get_download_options(ep_link: str) -> List[Dict[str, str]]:
@@ -185,19 +207,57 @@ def index():
 @app.route('/download', methods=['POST'])
 def download():
     url = request.form['url']
-    anime_id = url.split('/')[-1]
-    print(f"Anime ID: {anime_id}")
-    episodes = get_episodes(anime_id)
-    print(f"Episodes found: {len(episodes)}")
+    print(f"DEBUG: Received URL: {url}")
+
+    # Extract domain and anime_id more flexibly
+    try:
+        from urllib.parse import urlparse
+        parsed_url = urlparse(url)
+        domain = parsed_url.netloc
+        path_parts = parsed_url.path.strip('/').split('/')
+        anime_id = path_parts[-1] if path_parts else ''
+
+        print(f"DEBUG: Parsed domain: {domain}, anime_id: {anime_id}")
+
+        if not anime_id:
+            return "Invalid URL format. Please provide a complete anime page URL."
+
+        # Use the domain from the user's URL instead of hardcoding animepahe.si
+        full_url = f"https://{domain}/anime/{anime_id}"
+        print(f"DEBUG: Full URL to fetch: {full_url}")
+
+    except Exception as e:
+        print(f"DEBUG: URL parsing error: {e}")
+        return "Invalid URL format."
+
+    print("DEBUG: Calling get_episodes...")
+    episodes = get_episodes(anime_id, domain)
+    print(f"DEBUG: Episodes found: {len(episodes)}")
     if not episodes:
-        return "No episodes found or invalid URL"
+        print("DEBUG: No episodes found, returning error message")
+        return "No episodes found or invalid URL. Please check that the URL is correct and try again."
+    print("DEBUG: Rendering select.html template")
     return render_template('select.html', episodes=episodes, url=url)
 
 @app.route('/download_selected', methods=['POST'])
 def download_selected():
     url = request.form['url']
-    anime_id = url.split('/')[-1]
-    episodes = get_episodes(anime_id)
+
+    # Extract domain and anime_id more flexibly
+    try:
+        from urllib.parse import urlparse
+        parsed_url = urlparse(url)
+        domain = parsed_url.netloc
+        path_parts = parsed_url.path.strip('/').split('/')
+        anime_id = path_parts[-1] if path_parts else ''
+
+        if not anime_id:
+            return "Invalid URL format."
+
+    except Exception as e:
+        return "Invalid URL format."
+
+    episodes = get_episodes(anime_id, domain)
     selected = request.form.getlist('selected')
     selected_nums = [int(s) for s in selected]
     selected_eps = [ep for ep in episodes if ep['number'] in selected_nums]
