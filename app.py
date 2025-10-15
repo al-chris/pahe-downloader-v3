@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template, send_file
+from flask import Flask, request, render_template, send_file, jsonify
 import requests
 from bs4 import BeautifulSoup
 import re
@@ -12,6 +12,16 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+
+# Global download status
+download_status = {
+    'is_downloading': False,
+    'progress': 0,
+    'current_episode': 0,
+    'total_episodes': 0,
+    'status_message': 'Initializing...',
+    'completed': False
+}
 
 class Episode(TypedDict):
     number: int
@@ -352,6 +362,17 @@ def download_selected():
     selected_nums = [int(s) for s in selected]
     selected_eps = [ep for ep in episodes if ep['number'] in selected_nums]
 
+    # Initialize download status
+    global download_status
+    download_status: dict[str, Union[bool, int, str]] = {
+        'is_downloading': True,
+        'progress': 0,
+        'current_episode': 0,
+        'total_episodes': len(selected_eps),
+        'status_message': 'Starting download process...',
+        'completed': False
+    }
+
     # Start download in background thread
     download_thread = threading.Thread(target=process_downloads, args=(selected_eps,))
     download_thread.start()
@@ -359,13 +380,19 @@ def download_selected():
     return render_template('downloading.html', episode_count=len(selected_eps))
 
 def process_downloads(selected_eps: List[Episode]) -> None:
+    global download_status
     download_dir = 'downloads'
     os.makedirs(download_dir, exist_ok=True)
     print(f"DEBUG: Created downloads directory: {download_dir}")
     print(f"DEBUG: Processing {len(selected_eps)} episodes")
 
+    download_status['status_message'] = f'Processing {len(selected_eps)} episodes...'
+
     def download_ep(ep: Dict[str, Union[int, str]]) -> None:
+        global download_status
         print(f"DEBUG: Processing episode {ep['number']}: {ep['link']}")
+        download_status['status_message'] = f'Finding download options for episode {ep["number"]}...'
+        
         options = get_download_options(str(ep['link']))
         print(f"DEBUG: Download options: {options}")
 
@@ -373,6 +400,7 @@ def process_downloads(selected_eps: List[Episode]) -> None:
             print(f"DEBUG: No download options found for episode {ep['number']}")
             return
 
+        download_status['status_message'] = f'Selecting quality for episode {ep["number"]}...'
         pahe_url = None
 
         # Prefer 720p, but fall back to highest available quality
@@ -395,6 +423,7 @@ def process_downloads(selected_eps: List[Episode]) -> None:
             print(f"DEBUG: No download URL found for episode {ep['number']}")
             return
 
+        download_status['status_message'] = f'Getting download link for episode {ep["number"]}...'
         print(f"DEBUG: Getting download link from: {pahe_url}")
         download_url = get_download_link(pahe_url)
         print(f"DEBUG: Final download URL: {download_url}")
@@ -403,6 +432,8 @@ def process_downloads(selected_eps: List[Episode]) -> None:
             print(f"DEBUG: No download URL obtained for episode {ep['number']}")
             return
 
+        download_status['current_episode'] = ep['number']
+        download_status['status_message'] = f'Downloading episode {ep["number"]}...'
         filename = f"ep_{str(ep['number'])}.mp4"
         filepath = os.path.join(download_dir, filename)
         print(f"DEBUG: Downloading to: {filepath}")
@@ -410,9 +441,17 @@ def process_downloads(selected_eps: List[Episode]) -> None:
         try:
             with requests.get(download_url, stream=True, timeout=30) as r:
                 r.raise_for_status()
+                total_size = int(r.headers.get('content-length', 0))
+                downloaded = 0
                 with open(filepath, 'wb') as f:
                     for chunk in r.iter_content(chunk_size=8192):
-                        f.write(chunk)
+                        if chunk:
+                            f.write(chunk)
+                            downloaded += len(chunk)
+                            if total_size > 0:
+                                episode_progress = (downloaded / total_size) * 100
+                                overall_progress = ((ep['number'] - 1) / len(selected_eps) * 100) + (episode_progress / len(selected_eps))
+                                download_status['progress'] = min(overall_progress, 90)
             print(f"DEBUG: Successfully downloaded {filename}")
         except Exception as e:
             print(f"DEBUG: Download failed for {filename}: {e}")
@@ -426,6 +465,7 @@ def process_downloads(selected_eps: List[Episode]) -> None:
         t.join()
 
     # Create ZIP file
+    download_status['status_message'] = 'Creating ZIP file...'
     zip_path = 'downloads.zip'
     files_to_zip = os.listdir(download_dir)
     print(f"DEBUG: Files in downloads directory: {files_to_zip}")
@@ -441,6 +481,16 @@ def process_downloads(selected_eps: List[Episode]) -> None:
 
     zip_size = os.path.getsize(zip_path) if os.path.exists(zip_path) else 0
     print(f"DEBUG: ZIP file created successfully, size: {zip_size} bytes")
+    
+    download_status['progress'] = 100
+    download_status['status_message'] = 'Download complete! Preparing file...'
+    download_status['completed'] = True
+    download_status['is_downloading'] = False
+
+@app.route('/download_status')
+def download_status_route():
+    global download_status
+    return jsonify(download_status)
 
 @app.route('/check_download')
 def check_download():

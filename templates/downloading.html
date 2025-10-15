@@ -54,44 +54,19 @@
 
     <script>
         // Check download status
-        let progress = 0;
         const progressFill = document.getElementById('progress-fill');
         const progressText = document.getElementById('progress-text');
         const statusContainer = document.getElementById('status-container');
 
-        const messages = [
-            'Initializing download...',
-            'Finding episode links...',
-            'Preparing download queue...',
-            'Starting downloads...',
-            'Downloading episodes...',
-            'Almost done...',
-            'Packaging files...',
-            'Preparing ZIP file...'
-        ];
+        // Update progress from server
+        const updateProgress = () => {
+            fetch('/download_status')
+                .then(response => response.json())
+                .then(data => {
+                    progressFill.style.width = `${data.progress}%`;
+                    progressText.textContent = data.status_message;
 
-        let messageIndex = 0;
-        const progressInterval = setInterval(() => {
-            progress += Math.random() * 8 + 2; // Random progress between 2-10%
-            if (progress >= 95) {
-                progress = 95;
-                progressText.textContent = 'Finalizing... Please wait...';
-                clearInterval(progressInterval);
-            } else {
-                if (messageIndex < messages.length - 1 && progress > (messageIndex + 1) * (100 / messages.length)) {
-                    messageIndex++;
-                }
-                progressText.textContent = messages[messageIndex];
-            }
-            progressFill.style.width = `${Math.min(progress, 95)}%`;
-        }, 1000);
-
-        // Check if download is complete
-        const checkComplete = setInterval(() => {
-            fetch('/check_download', { method: 'HEAD' })
-                .then(response => {
-                    if (response.status === 200 && response.headers.get('content-type') === 'application/zip') {
-                        clearInterval(checkComplete);
+                    if (data.completed) {
                         clearInterval(progressInterval);
                         progressFill.style.width = '100%';
                         progressText.textContent = 'Download ready! Starting download...';
@@ -105,14 +80,19 @@
                 .catch(() => {
                     // Still processing
                 });
-        }, 3000);
+        };
 
-        // Auto-refresh after 10 minutes as fallback
+        // Check progress every 2 seconds
+        const progressInterval = setInterval(updateProgress, 2000);
+
+        // Initial update
+        updateProgress();
+
+        // Auto-refresh after 15 minutes as fallback
         setTimeout(() => {
-            clearInterval(checkComplete);
             clearInterval(progressInterval);
             statusContainer.innerHTML = '<div class="alert alert-warning"><span>Download is taking longer than expected. Please check back later or refresh the page.</span></div>';
-        }, 600000);
+        }, 900000);
     </script>
 </body>
 </html>
