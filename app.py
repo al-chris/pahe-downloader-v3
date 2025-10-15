@@ -221,33 +221,51 @@ def get_download_options(ep_link: str) -> List[Dict[str, str]]:
         return []
 
 def get_download_link(pahe_win_url: str) -> Optional[str]:
-    session = requests.Session()
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Accept-Encoding': 'gzip, deflate',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'cross-site',
-        'Sec-Fetch-User': '?1',
-        'Cache-Control': 'max-age=0',
-    }
-    session.headers.update(headers)
+    # Use Selenium to handle the dynamic pahe.win page
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--window-size=1920,1080")
+    chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36")
+
+    service = Service('chromedriver-win64/chromedriver.exe')
+    driver = webdriver.Chrome(service=service, options=chrome_options)
+
     try:
-        cookie = get_ddg_cookies(pahe_win_url)
-        session.cookies.set('__ddg2', cookie, domain='.pahe.win')  # type: ignore
-        response = session.get(pahe_win_url)
-        soup = BeautifulSoup(response.text, 'html.parser')
-        redirect_link_elem = soup.find('a', text='Redirect me')
-        if not redirect_link_elem:
-            return None
-        redirect_link = str(redirect_link_elem['href'])
-        cookie = get_ddg_cookies(redirect_link)
+        print(f"DEBUG: Loading pahe.win page: {pahe_win_url}")
+        driver.get(pahe_win_url)
+
+        # Wait for the "Continue" link to appear (it appears after the countdown)
+        continue_link = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.XPATH, "//a[contains(text(), 'Continue')]"))
+        )
+        redirect_url = continue_link.get_attribute('href')
+        print(f"DEBUG: Found redirect URL: {redirect_url}")
+
+        driver.quit()
+
+        # Now proceed with the original logic using requests
+        session = requests.Session()
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'cross-site',
+            'Sec-Fetch-User': '?1',
+            'Cache-Control': 'max-age=0',
+        }
+        session.headers.update(headers)
+
+        cookie = get_ddg_cookies(redirect_url)
         session.cookies.set('__ddg2', cookie, domain='.kwik.cx')  # type: ignore
-        response = session.get(redirect_link)
+        response = session.get(redirect_url)
         match = re.search(r'\("(\w+)",\d+,"(\w+)",(\d+),(\d+),\d+\)', response.text)
         if not match:
             return None
@@ -261,7 +279,10 @@ def get_download_link(pahe_win_url: str) -> Optional[str]:
         token = token_match.group(1)
         content = session.post(action, allow_redirects=False, data={"_token": token}, headers={"Referer": "https://kwik.cx/"})
         return content.headers.get("Location")
-    except:
+
+    except Exception as e:
+        print(f"DEBUG: Exception in get_download_link: {e}")
+        driver.quit()
         return None
 
 @app.route('/')
