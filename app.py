@@ -199,16 +199,22 @@ def download():
     os.makedirs(download_dir, exist_ok=True)
     
     def download_ep(ep: Dict[str, Union[int, str]]) -> None:
+        print(f"Processing episode {ep['number']}: {ep['link']}")
         options = get_download_options(str(ep['link']))
+        print(f"Download options: {options}")
         pahe_url = None
         for opt in options:
             if '720' in opt['res']:
                 pahe_url = opt['url']
                 break
         if not pahe_url:
+            print("No 720p option found")
             return
+        print(f"Pahe URL: {pahe_url}")
         download_url = get_download_link(pahe_url)
+        print(f"Download URL: {download_url}")
         if not download_url:
+            print("No download URL obtained")
             return
         filename = f"ep_{str(ep['number'])}.mp4"
         filepath = os.path.join(download_dir, filename)
@@ -218,8 +224,9 @@ def download():
                 with open(filepath, 'wb') as f:
                     for chunk in r.iter_content(chunk_size=8192):
                         f.write(chunk)
-        except:
-            pass  # Skip failed downloads
+            print(f"Downloaded {filename}")
+        except Exception as e:
+            print(f"Download failed for {filename}: {e}")
     
     threads: List[threading.Thread] = []
     for ep in episodes:
