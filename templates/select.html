@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Select Episodes</title>
+</head>
+<body>
+    <h1>Select Episodes to Download</h1>
+    <form action="/download_selected" method="post">
+        <input type="hidden" name="url" value="{{ url }}">
+        {% for ep in episodes %}
+        <input type="checkbox" id="ep{{ ep.number }}" name="selected" value="{{ ep.number }}" checked>
+        <label for="ep{{ ep.number }}">Episode {{ ep.number }}</label><br>
+        {% endfor %}
+        <br>
+        <button type="submit">Download Selected Episodes</button>
+    </form>
+</body>
+</html>

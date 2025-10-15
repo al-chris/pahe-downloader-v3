@@ -107,35 +107,31 @@ def get_episodes(siteLink: str) -> List[Dict[str, Union[int, str]]]:
         return []
 
 def get_download_options(ep_link: str) -> List[Dict[str, str]]:
-    session = requests.Session()
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Accept-Encoding': 'gzip, deflate',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'same-origin',
-        'Sec-Fetch-User': '?1',
-        'Cache-Control': 'max-age=0',
-    }
-    session.headers.update(headers)
+    options = Options()
+    options.headless = True
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    service = Service(executable_path='chromedriver_win32/chromedriver.exe')
+    driver = webdriver.Chrome(service=service, options=options)
     try:
-        cookie = get_ddg_cookies(ep_link)
-        session.cookies.set('__ddg2', cookie, domain='.animepahe.si')  # type: ignore
-        response = session.get(ep_link)
-        soup = BeautifulSoup(response.text, 'html.parser')
-        options = []
+        driver.get(ep_link)
+        # Wait for download options to load
+        wait = WebDriverWait(driver, 30)
+        wait.until(EC.presence_of_element_located((By.CLASS_NAME, "dropdown-item")))
+        page_source = driver.page_source
+        driver.quit()
+        soup = BeautifulSoup(page_source, 'html.parser')
+        options_list = []
         for a in soup.find_all('a', class_='dropdown-item'):
             text = a.get_text()
             if 'p' in text and 'MB' in text:
                 res = text.split()[0]
                 url = a['href']
-                options.append({'res': res, 'url': url})
-        return options
-    except:
+                options_list.append({'res': res, 'url': url})
+        return options_list
+    except Exception as e:
+        print(f"Exception in get_download_options: {e}")
+        driver.quit()
         return []
 
 def get_download_link(pahe_win_url: str) -> Optional[str]:
@@ -195,6 +191,17 @@ def download():
     print(f"Episodes found: {len(episodes)}")
     if not episodes:
         return "No episodes found or invalid URL"
+    return render_template('select.html', episodes=episodes, url=url)
+
+@app.route('/download_selected', methods=['POST'])
+def download_selected():
+    url = request.form['url']
+    anime_id = url.split('/')[-1]
+    episodes = get_episodes(anime_id)
+    selected = request.form.getlist('selected')
+    selected_nums = [int(s) for s in selected]
+    selected_eps = [ep for ep in episodes if ep['number'] in selected_nums]
+    print(f"Selected episodes: {selected_eps}")
     download_dir = 'downloads'
     os.makedirs(download_dir, exist_ok=True)
     
@@ -229,7 +236,7 @@ def download():
             print(f"Download failed for {filename}: {e}")
     
     threads: List[threading.Thread] = []
-    for ep in episodes:
+    for ep in selected_eps:
         t = threading.Thread(target=download_ep, args=(ep,))
         threads.append(t)
         t.start()
