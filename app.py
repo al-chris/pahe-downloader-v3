@@ -12,6 +12,143 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+import time
+import queue
+import atexit
+
+# Browser Manager for optimized resource usage
+class BrowserManager:
+    def __init__(self):
+        self.driver = None
+        self.task_queue = queue.Queue()
+        self.max_operations_per_driver = 50  # Restart after this many operations
+        self.operation_count = 0
+        self.worker_thread = None
+        self.is_running = False
+        self.results = {}  # Store results by task_id
+        self.task_id_counter = 0
+        self._initialize_driver()
+        self._start_worker()
+
+    def _initialize_driver(self):
+        """Initialize Chrome driver with optimized options"""
+        options = Options()
+        # Headless mode for resource efficiency
+        options.add_argument("--headless=new")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-extensions")
+        options.add_argument("--disable-background-networking")
+        options.add_argument("--disable-software-rasterizer")
+        options.add_argument("--disable-web-security")
+        options.add_argument("--disable-features=VizDisplayCompositor")
+        options.add_argument("--window-size=1920,1080")
+        options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36")
+
+        # Memory and performance optimizations
+        options.add_argument("--memory-pressure-off")
+        options.add_argument("--max_old_space_size=4096")
+        options.add_argument("--disable-background-timer-throttling")
+        options.add_argument("--disable-renderer-backgrounding")
+        options.add_argument("--disable-backgrounding-occluded-windows")
+
+        service = Service(executable_path='chromedriver-win64/chromedriver.exe')
+        self.driver = webdriver.Chrome(service=service, options=options)
+        self.operation_count = 0
+        print("DEBUG: BrowserManager initialized new Chrome driver")
+
+    def _start_worker(self):
+        """Start the worker thread to process queued tasks"""
+        if self.worker_thread and self.worker_thread.is_alive():
+            return
+
+        self.is_running = True
+        self.worker_thread = threading.Thread(target=self._process_queue, daemon=True)
+        self.worker_thread.start()
+        print("DEBUG: BrowserManager worker thread started")
+
+    def _process_queue(self):
+        """Worker thread that processes tasks from the queue"""
+        while self.is_running:
+            try:
+                task_id, task_func, args, kwargs = self.task_queue.get(timeout=1)
+                try:
+                    result = self.execute_task(task_func, *args, **kwargs)
+                    self.results[task_id] = {'result': result, 'error': None}
+                except Exception as e:
+                    self.results[task_id] = {'result': None, 'error': str(e)}
+                finally:
+                    self.task_queue.task_done()
+            except queue.Empty:
+                continue
+            except Exception as e:
+                print(f"DEBUG: Queue processing error: {e}")
+
+    def _restart_driver_if_needed(self):
+        """Restart driver if operation limit reached"""
+        if self.operation_count >= self.max_operations_per_driver:
+            print(f"DEBUG: Restarting driver after {self.operation_count} operations")
+            self._quit_driver()
+            self._initialize_driver()
+
+    def _quit_driver(self):
+        """Safely quit the current driver"""
+        if self.driver:
+            try:
+                self.driver.quit()
+            except Exception as e:
+                print(f"DEBUG: Error quitting driver: {e}")
+            self.driver = None
+
+    def execute_task(self, task_func, *args, **kwargs):
+        """Execute a browser task, handling driver lifecycle"""
+        self._restart_driver_if_needed()
+
+        if not self.driver:
+            raise Exception("Browser driver not available")
+
+        try:
+            result = task_func(self.driver, *args, **kwargs)
+            self.operation_count += 1
+            return result
+        except Exception as e:
+            print(f"DEBUG: Task execution failed: {e}")
+            # If task fails, restart driver on next operation
+            self._quit_driver()
+            raise e
+
+    def submit_task(self, task_func, *args, **kwargs):
+        """Submit a task to the queue and return a task ID"""
+        task_id = self.task_id_counter
+        self.task_id_counter += 1
+        self.task_queue.put((task_id, task_func, args, kwargs))
+        return task_id
+
+    def get_result(self, task_id, timeout=30):
+        """Get the result of a queued task"""
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            if task_id in self.results:
+                result = self.results.pop(task_id)
+                if result['error']:
+                    raise Exception(result['error'])
+                return result['result']
+            time.sleep(0.1)
+        raise Exception(f"Task {task_id} timed out")
+
+    def cleanup(self):
+        """Cleanup resources"""
+        self.is_running = False
+        if self.worker_thread:
+            self.worker_thread.join(timeout=5)
+        self._quit_driver()
+
+# Global browser manager instance
+browser_manager = BrowserManager()
+
+# Register cleanup on exit
+atexit.register(browser_manager.cleanup)
 
 # Global download status
 download_status: dict[str, Union[bool, int, str, float]] = {
@@ -67,199 +204,177 @@ def decrypt(full_string: str, key: str, v1: str, v2: str) -> str:
         i += 1
     return r
 
-def get_episodes(siteLink: str, domain: str = "animepahe.si") -> List[Episode]:
-    options = Options()
-    options.add_argument("--headless")
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--disable-gpu')
-    options.add_argument('--window-size=1920,1080')
-    service = Service(executable_path='chromedriver-win64/chromedriver.exe')
-
-    try:
-        driver = webdriver.Chrome(service=service, options=options)
-    except Exception as e:
-        print(f"DEBUG: Failed to initialize Chrome driver: {e}")
-        return []
-
+def get_episodes_task(driver, siteLink: str, domain: str = "animepahe.si") -> List[Episode]:
+    """Task function for getting episodes using the shared driver"""
     url = f"https://{domain}/anime/{siteLink}"
     print(f"DEBUG: Fetching anime page with Selenium: {url}")
 
-    try:
-        driver.get(url)
-        print("DEBUG: Page loaded, waiting for content...")
+    driver.get(url)
+    print("DEBUG: Page loaded, waiting for content...")
 
-        # Wait for episode links to load with a longer timeout
-        wait = WebDriverWait(driver, 30)
-        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "a[href*='/play/']")))
-        print("DEBUG: Episode links found")
+    # Wait for episode links to load with a longer timeout
+    wait = WebDriverWait(driver, 30)
+    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "a[href*='/play/']")))
+    print("DEBUG: Episode links found")
 
-        page_source = driver.page_source
-        driver.quit()
+    page_source = driver.page_source
 
-        soup = BeautifulSoup(page_source, 'html.parser')
-        print(f"DEBUG: Page title: {soup.title.text if soup.title else 'No title'}")
-        print(f"DEBUG: Total a tags: {len(soup.find_all('a'))}")
+    soup = BeautifulSoup(page_source, 'html.parser')
+    print(f"DEBUG: Page title: {soup.title.text if soup.title else 'No title'}")
+    print(f"DEBUG: Total a tags: {len(soup.find_all('a'))}")
 
-        ep_list: List[Episode] = []
-        for a in soup.find_all('a', href=True):
-            if '/play/' in a['href'] and siteLink in a['href']:
-                text = a.get_text().strip()
-                print(f"DEBUG: Found episode link: {a['href']}, text: '{text}'")
-                # Check for 'Watch - X Online' format
-                if 'Watch' in text and 'Online' in text:
-                    try:
-                        # Extract number between ' - ' and ' Online'
-                        start = text.find(' - ') + 3
-                        end = text.find(' Online')
-                        if start > 2 and end > start:
-                            ep_num = int(text[start:end])
-                            ep_link = f'https://{domain}' + str(a['href'])
-                            ep_list.append({'number': ep_num, 'link': ep_link})
-                    except ValueError:
-                        print(f"DEBUG: Failed to parse episode number from '{text}'")
-                        pass
-                elif text.startswith('Episode '):
-                    try:
-                        ep_num = int(text.split()[1])
+    ep_list: List[Episode] = []
+    for a in soup.find_all('a', href=True):
+        if '/play/' in a['href'] and siteLink in a['href']:
+            text = a.get_text().strip()
+            print(f"DEBUG: Found episode link: {a['href']}, text: '{text}'")
+            # Check for 'Watch - X Online' format
+            if 'Watch' in text and 'Online' in text:
+                try:
+                    # Extract number between ' - ' and ' Online'
+                    start = text.find(' - ') + 3
+                    end = text.find(' Online')
+                    if start > 2 and end > start:
+                        ep_num = int(text[start:end])
                         ep_link = f'https://{domain}' + str(a['href'])
                         ep_list.append({'number': ep_num, 'link': ep_link})
-                    except (ValueError, IndexError):
-                        print(f"DEBUG: Failed to parse episode number from '{text}'")
-                        pass
+                except ValueError:
+                    print(f"DEBUG: Failed to parse episode number from '{text}'")
+                    pass
+            elif text.startswith('Episode '):
+                try:
+                    ep_num = int(text.split()[1])
+                    ep_link = f'https://{domain}' + str(a['href'])
+                    ep_list.append({'number': ep_num, 'link': ep_link})
+                except (ValueError, IndexError):
+                    print(f"DEBUG: Failed to parse episode number from '{text}'")
+                    pass
 
-        print(f"DEBUG: Episodes found: {len(ep_list)}")
-        return sorted(ep_list, key=lambda x: x['number'])
+    print(f"DEBUG: Episodes found: {len(ep_list)}")
+    return sorted(ep_list, key=lambda x: x['number'])
 
+def get_episodes(siteLink: str, domain: str = "animepahe.si") -> List[Episode]:
+    """Get episodes using the browser manager"""
+    try:
+        task_id = browser_manager.submit_task(get_episodes_task, siteLink, domain)
+        return browser_manager.get_result(task_id)
     except Exception as e:
         print(f"DEBUG: Exception in get_episodes: {e}")
-        try:
-            driver.quit()
-        except:
-            pass
         return []
+
+def get_download_options_task(driver, ep_link: str) -> List[DownloadOption]:
+    """Task function for getting download options using the shared driver"""
+    driver.get(ep_link)
+    print("DEBUG: Loaded episode page, waiting for download options...")
+
+    # Wait for the page to load and find the download dropdown
+    wait = WebDriverWait(driver, 30)
+
+    # Try to find and click the download dropdown toggle
+    try:
+        # Look for common dropdown toggle selectors
+        dropdown_selectors = [
+            ".dropdown-toggle",
+            "[data-toggle='dropdown']",
+            ".download-toggle",
+            "button[class*='download']",
+            ".btn-download"
+        ]
+
+        dropdown_clicked = False
+        for selector in dropdown_selectors:
+            try:
+                dropdown_toggle = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, selector)))
+                dropdown_toggle.click()
+                print(f"DEBUG: Clicked dropdown toggle: {selector}")
+                dropdown_clicked = True
+                break
+            except:
+                continue
+
+        if not dropdown_clicked:
+            print("DEBUG: Could not find dropdown toggle, proceeding without clicking")
+
+    except Exception as e:
+        print(f"DEBUG: Error clicking dropdown: {e}")
+
+    # Wait a bit for options to load
+    time.sleep(2)
+
+    # Wait for download options to load
+    wait.until(EC.presence_of_element_located((By.CLASS_NAME, "dropdown-item")))
+    print("DEBUG: Download options found")
+
+    page_source = driver.page_source
+    soup = BeautifulSoup(page_source, 'html.parser')
+    options_list: List[DownloadOption] = []
+    for a in soup.find_all('a', class_='dropdown-item'):
+        text = a.get_text().strip()
+        print(f"DEBUG: Found download option: '{text}'")
+        url = a['href']
+        # Parse the text format like "SubsPlease · 720p (88MB)" or "Yameii · 1080p (139MB) eng"
+        if '·' in text:
+            parts = text.split('·')
+            if len(parts) >= 2:
+                group = parts[0].strip()
+                quality_part = parts[1].strip()
+                print(f"DEBUG: Parsing - Group: '{group}', Quality part: '{quality_part}'")
+
+                # Extract resolution from quality part (e.g., "720p (88MB)" -> "720")
+                import re
+                print(f"DEBUG: Searching for resolution in: '{quality_part}'")
+                res_match = re.search(r'(\d+)p', quality_part)
+                print(f"DEBUG: Regex match result: {res_match}")
+                if res_match:
+                    res = res_match.group(1)
+                    print(f"DEBUG: Extracted resolution: {res}")
+                    options_list.append({'res': res, 'url': str(url), 'group': group})
+                    print(f"DEBUG: Parsed option - Group: {group}, Res: {res}p, URL: {url}")
+                else:
+                    print(f"DEBUG: Could not extract resolution from: '{quality_part}' - no regex match")
+            else:
+                print(f"DEBUG: Not enough parts after splitting '{text}' by '·'")
+        else:
+            # Fallback for other formats
+            print(f"DEBUG: Option doesn't contain '·': '{text}'")
+
+    print(f"DEBUG: Total download options found: {len(options_list)}")
+    return options_list
 
 def get_download_options(ep_link: str) -> List[DownloadOption]:
-    options = Options()
-    options.add_argument("--headless")
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    service = Service(executable_path='chromedriver-win64/chromedriver.exe')
-    driver = webdriver.Chrome(service=service, options=options)
+    """Get download options using the browser manager"""
     try:
-        driver.get(ep_link)
-        print("DEBUG: Loaded episode page, waiting for download options...")
-
-        # Wait for the page to load and find the download dropdown
-        wait = WebDriverWait(driver, 30)
-
-        # Try to find and click the download dropdown toggle
-        try:
-            # Look for common dropdown toggle selectors
-            dropdown_selectors = [
-                ".dropdown-toggle",
-                "[data-toggle='dropdown']",
-                ".download-toggle",
-                "button[class*='download']",
-                ".btn-download"
-            ]
-
-            dropdown_clicked = False
-            for selector in dropdown_selectors:
-                try:
-                    dropdown_toggle = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, selector)))
-                    dropdown_toggle.click()
-                    print(f"DEBUG: Clicked dropdown toggle: {selector}")
-                    dropdown_clicked = True
-                    break
-                except:
-                    continue
-
-            if not dropdown_clicked:
-                print("DEBUG: Could not find dropdown toggle, proceeding without clicking")
-
-        except Exception as e:
-            print(f"DEBUG: Error clicking dropdown: {e}")
-
-        # Wait a bit for options to load
-        import time
-        time.sleep(2)
-
-        # Wait for download options to load
-        wait.until(EC.presence_of_element_located((By.CLASS_NAME, "dropdown-item")))
-        print("DEBUG: Download options found")
-
-        page_source = driver.page_source
-        driver.quit()
-        soup = BeautifulSoup(page_source, 'html.parser')
-        options_list: List[DownloadOption] = []
-        for a in soup.find_all('a', class_='dropdown-item'):
-            text = a.get_text().strip()
-            print(f"DEBUG: Found download option: '{text}'")
-            url = a['href']
-
-            # Parse the text format like "SubsPlease · 720p (88MB)" or "Yameii · 1080p (139MB) eng"
-            if '·' in text:
-                parts = text.split('·')
-                if len(parts) >= 2:
-                    group = parts[0].strip()
-                    quality_part = parts[1].strip()
-                    print(f"DEBUG: Parsing - Group: '{group}', Quality part: '{quality_part}'")
-
-                    # Extract resolution from quality part (e.g., "720p (88MB)" -> "720")
-                    import re
-                    print(f"DEBUG: Searching for resolution in: '{quality_part}'")
-                    res_match = re.search(r'(\d+)p', quality_part)
-                    print(f"DEBUG: Regex match result: {res_match}")
-                    if res_match:
-                        res = res_match.group(1)
-                        print(f"DEBUG: Extracted resolution: {res}")
-                        options_list.append({'res': res, 'url': str(url), 'group': group})
-                        print(f"DEBUG: Parsed option - Group: {group}, Res: {res}p, URL: {url}")
-                    else:
-                        print(f"DEBUG: Could not extract resolution from: '{quality_part}' - no regex match")
-                else:
-                    print(f"DEBUG: Not enough parts after splitting '{text}' by '·'")
-            else:
-                # Fallback for other formats
-                print(f"DEBUG: Option doesn't contain '·': '{text}'")
-
-        print(f"DEBUG: Total download options found: {len(options_list)}")
-        return options_list
+        task_id = browser_manager.submit_task(get_download_options_task, ep_link)
+        return browser_manager.get_result(task_id)
     except Exception as e:
         print(f"Exception in get_download_options: {e}")
-        driver.quit()
         return []
 
+def get_download_link_task(driver, pahe_win_url: str) -> Optional[str]:
+    """Task function for getting download link redirect URL using the shared driver"""
+    print(f"DEBUG: Loading pahe.win page: {pahe_win_url}")
+    driver.get(pahe_win_url)
+
+    # Wait for the "Continue" link to appear (it appears after the countdown)
+    continue_link = WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located((By.XPATH, "//a[contains(text(), 'Continue')]"))
+    )
+    redirect_url = continue_link.get_attribute('href')  # type: ignore
+    if redirect_url is None:
+        print("DEBUG: No redirect URL found")
+        return None
+    print(f"DEBUG: Found redirect URL: {redirect_url}")
+    return redirect_url
+
 def get_download_link(pahe_win_url: str) -> Optional[str]:
-    # Use Selenium to handle the dynamic pahe.win page
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--window-size=1920,1080")
-    chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36")
-
-    service = Service('chromedriver-win64/chromedriver.exe')
-    driver = webdriver.Chrome(service=service, options=chrome_options)
-
+    """Get download link using the browser manager for the browser part, then requests for the rest"""
     try:
-        print(f"DEBUG: Loading pahe.win page: {pahe_win_url}")
-        driver.get(pahe_win_url)
+        # Use browser manager for the Selenium part
+        task_id = browser_manager.submit_task(get_download_link_task, pahe_win_url)
+        redirect_url = browser_manager.get_result(task_id)
 
-        # Wait for the "Continue" link to appear (it appears after the countdown)
-        continue_link = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.XPATH, "//a[contains(text(), 'Continue')]"))
-        )
-        redirect_url = continue_link.get_attribute('href')  # type: ignore
-        if redirect_url is None:
-            print("DEBUG: No redirect URL found")
-            driver.quit()
+        if not redirect_url:
             return None
-        print(f"DEBUG: Found redirect URL: {redirect_url}")
-
-        driver.quit()
 
         # Now proceed with the original logic using requests
         session = requests.Session()
@@ -297,7 +412,6 @@ def get_download_link(pahe_win_url: str) -> Optional[str]:
 
     except Exception as e:
         print(f"DEBUG: Exception in get_download_link: {e}")
-        driver.quit()
         return None
 
 @app.route('/')
