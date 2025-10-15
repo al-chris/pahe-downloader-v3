@@ -144,7 +144,7 @@ python build.py
 pip install pyinstaller
 
 # Build the executable with custom icon
-pyinstaller --onefile --hidden-import=webdriver_manager --hidden-import=selenium --hidden-import=webview --hidden-import=webview.platforms.winforms --hidden-import=clr --hidden-import=pythonnet --hidden-import=flask --hidden-import=beautifulsoup4 --hidden-import=lxml --hidden-import=requests --hidden-import=urllib3 --name=pahe-downloader --clean --noconsole --icon=static/icon.png main.py
+pyinstaller --onefile --hidden-import=webdriver_manager --hidden-import=selenium --hidden-import=webview --hidden-import=webview.platforms.winforms --hidden-import=clr --hidden-import=pythonnet --hidden-import=flask --hidden-import=beautifulsoup4 --hidden-import=lxml --hidden-import=requests --hidden-import=urllib3 --name=pahe-downloader --clean --noconsole --icon=static/icon.ico main.py
 ```
 
 The executable will be created in the `dist/` folder as `pahe-downloader.exe` with the custom application icon.
