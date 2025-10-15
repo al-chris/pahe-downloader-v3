@@ -53,6 +53,7 @@ jobs:
         Get-Content "dist\pahe-downloader.exe.sha256"
 
     - name: Upload executable and checksum to release
+      if: github.event_name == 'release'
       uses: softprops/action-gh-release@v1
       with:
         files: |
