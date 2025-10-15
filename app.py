@@ -582,9 +582,43 @@ def process_downloads(selected_eps: List[Episode]) -> None:
         download_status['current_episode'] = ep['number']
         download_status['status_message'] = f'Downloading episode {ep["number"]}...'
         
+        # Determine file extension from download URL
+        extension = '.mp4'  # default fallback
+        try:
+            # Make a HEAD request to check headers without downloading
+            head_response = requests.head(download_url, timeout=10, allow_redirects=True)
+            content_type = head_response.headers.get('content-type', '').lower()
+            content_disposition = head_response.headers.get('content-disposition', '')
+            
+            # Check Content-Disposition for filename
+            if 'filename=' in content_disposition:
+                filename_part = content_disposition.split('filename=')[-1].strip('"\'')
+                if '.' in filename_part:
+                    ext = '.' + filename_part.split('.')[-1].lower()
+                    if ext in ['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm']:
+                        extension = ext
+            
+            # Fallback to Content-Type mapping
+            if extension == '.mp4':
+                if 'video/mp4' in content_type:
+                    extension = '.mp4'
+                elif 'video/x-matroska' in content_type or 'video/webm' in content_type:
+                    extension = '.mkv'
+                elif 'video/avi' in content_type:
+                    extension = '.avi'
+                elif 'video/quicktime' in content_type:
+                    extension = '.mov'
+                elif 'video/x-ms-wmv' in content_type:
+                    extension = '.wmv'
+                elif 'video/x-flv' in content_type:
+                    extension = '.flv'
+                    
+        except Exception as e:
+            print(f"DEBUG: Could not determine file extension, using default .mp4: {e}")
+        
         # Sanitize anime name for filename (remove invalid characters)
         safe_anime_name = "".join(c for c in ep['anime_name'] if c.isalnum() or c in (' ', '-', '_')).rstrip()
-        filename = f"{safe_anime_name}_Episode_{str(ep['number'])}.mp4"
+        filename = f"{safe_anime_name}_Episode_{str(ep['number'])}{extension}"
         filepath = os.path.join(download_dir, filename)
         print(f"DEBUG: Downloading to: {filepath}")
 
