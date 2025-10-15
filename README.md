@@ -129,17 +129,45 @@ Downloads are automatically organized with descriptive filenames:
 
 To create a single executable file for easy distribution:
 
+#### Option 1: Using the Build Script
+```bash
+# Install PyInstaller first
+pip install pyinstaller
+
+# Run the build script
+python build.py
+```
+
+#### Option 2: Manual PyInstaller Command
 ```bash
 # Install PyInstaller
 pip install pyinstaller
 
 # Build the executable
-pyinstaller --onefile --hidden-import=webdriver_manager main.py
-
-# The executable will be in the dist/ folder
+pyinstaller --onefile --hidden-import=webdriver_manager --hidden-import=selenium --hidden-import=webview --hidden-import=webview.platforms.winforms --hidden-import=clr --hidden-import=pythonnet --hidden-import=flask --hidden-import=beautifulsoup4 --hidden-import=lxml --hidden-import=requests --hidden-import=urllib3 --name=pahe-downloader --clean --noconsole main.py
 ```
 
-This creates a standalone `.exe` file that users can run without installing Python or any dependencies.
+The executable will be created in the `dist/` folder as `pahe-downloader.exe`.
+
+#### Automated Releases
+
+When you create a new release on GitHub, the CI/CD pipeline will automatically:
+1. Build the executable using PyInstaller
+2. Generate a SHA256 checksum for verification
+3. Upload both files as release assets
+
+Users can then download the standalone executable and run it without installing Python or any dependencies.
+
+#### GitHub Releases
+
+The project includes automated CI/CD that builds releases:
+
+- **Trigger**: Creating a new release on GitHub automatically starts the build process
+- **Platform**: Windows executables (built on `windows-latest` runners)
+- **Artifacts**: 
+  - `pahe-downloader.exe` - The standalone executable
+  - `pahe-downloader.exe.sha256` - SHA256 checksum for verification
+- **Manual Trigger**: You can also trigger builds manually using the "Run workflow" button
 
 ## ⚠️ Disclaimer
 

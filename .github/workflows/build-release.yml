@@ -1,0 +1,63 @@
+name: Build and Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install uv
+      run: |
+        curl -LsSf https://astral.sh/uv/install.ps1 | powershell
+
+    - name: Install dependencies
+      run: |
+        uv sync
+
+    - name: Install PyInstaller
+      run: |
+        uv run pip install pyinstaller
+
+    - name: Build executable
+      run: |
+        uv run pyinstaller --onefile --hidden-import=webdriver_manager --hidden-import=selenium --hidden-import=webview --hidden-import=webview.platforms.winforms --hidden-import=clr --hidden-import=pythonnet --hidden-import=flask --hidden-import=beautifulsoup4 --hidden-import=lxml --hidden-import=requests --hidden-import=urllib3 --name=pahe-downloader --clean --noconsole main.py
+
+    - name: Verify executable exists
+      run: |
+        if (Test-Path "dist\pahe-downloader.exe") {
+          Write-Host "Executable created successfully"
+          Get-Item "dist\pahe-downloader.exe" | Select-Object Name, Length
+        } else {
+          Write-Error "Executable not found!"
+          exit 1
+        }
+
+    - name: Generate checksum
+      run: |
+        $hash = Get-FileHash -Path "dist\pahe-downloader.exe" -Algorithm SHA256
+        "$($hash.Hash)  pahe-downloader.exe" | Out-File -FilePath "dist\pahe-downloader.exe.sha256" -Encoding ASCII
+        Get-Content "dist\pahe-downloader.exe.sha256"
+
+    - name: Upload executable and checksum to release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          dist/pahe-downloader.exe
+          dist/pahe-downloader.exe.sha256
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
