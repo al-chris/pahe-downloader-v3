@@ -80,7 +80,19 @@ def get_episodes(siteLink: str) -> List[Dict[str, Union[int, str]]]:
             if '/play/' in a['href'] and siteLink in a['href']:
                 text = a.get_text().strip()
                 print(f"Found episode link: {a['href']}, text: '{text}'")
-                if text.startswith('Episode '):
+                # Check for 'Watch - X Online' format
+                if 'Watch' in text and 'Online' in text:
+                    try:
+                        # Extract number between ' - ' and ' Online'
+                        start = text.find(' - ') + 3
+                        end = text.find(' Online')
+                        if start > 2 and end > start:
+                            ep_num = int(text[start:end])
+                            ep_link = 'https://animepahe.si' + a['href']
+                            ep_list.append({'number': ep_num, 'link': ep_link})
+                    except:
+                        pass
+                elif text.startswith('Episode '):
                     try:
                         ep_num = int(text.split()[1])
                         ep_link = 'https://animepahe.si' + a['href']
