@@ -20,7 +20,7 @@ def build_executable():
         sys.executable, "-m", "pyinstaller",
         "--onefile",
         "--collect-all=flask",
-        "--collect-all=selenium",
+        "--collect-all=playwright",
         "--collect-all=beautifulsoup4",
         "--hidden-import=webdriver_manager",
         "--hidden-import=webview",

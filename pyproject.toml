@@ -1,5 +1,5 @@
 [project]
-name = "pahe-downloader"
+name = "pahe-downloader-v3"
 version = "0.1.0"
 description = "Web app to download anime episodes from animepahe.si"
 readme = "README.md"
@@ -8,8 +8,6 @@ dependencies = [
     "flask",
     "requests",
     "beautifulsoup4",
-    "selenium",
-    "webdriver-manager",
     "lxml",
     "types-requests>=2.32.4.20250913",
     "pywebview>=6.0",

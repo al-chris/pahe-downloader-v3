@@ -15,7 +15,7 @@ A modern, standalone desktop application for downloading anime episodes from ani
 - 📂 **Intelligent Naming**: Downloads named with anime title and episode number (e.g., "One Piece_Episode_1.mp4")
 - 🔍 **Auto Extension Detection**: Automatically detects correct file extensions (.mp4, .mkv, .avi, etc.)
 - 🤖 **Automated Driver Management**: webdriver-manager handles Chrome driver setup automatically
-- 🛡️ **Bypass Protections**: Uses Selenium to handle site protections
+- 🛡️ **Bypass Protections**: Uses Playwright to handle site protections
 - ⌨️ **Keyboard Shortcuts**: Ctrl+A to select/deselect all episodes
 - 🎪 **Interactive Elements**: Hover effects, loading states, and smooth transitions
 - 📦 **Single Executable**: Can be packaged as a standalone .exe file
@@ -25,7 +25,6 @@ A modern, standalone desktop application for downloading anime episodes from ani
 ### Prerequisites
 
 - Python 3.8 or higher
-- Chrome browser (automatically managed by webdriver-manager)
 - uv package manager (recommended)
 
 ### Setup
@@ -39,15 +38,19 @@ A modern, standalone desktop application for downloading anime episodes from ani
 2. **Install dependencies using uv:**
    ```bash
    uv sync
+
+   uv run playwright install chromium
    ```
 
    Or using pip:
    ```bash
    pip install -e .
+
+   python -m playwright install chromium
    ```
 
-3. **No manual driver setup required:**
-   webdriver-manager automatically downloads and manages Chrome drivers for your system.
+3. **Install Playwright browsers:**
+   Playwright automatically manages browser binaries for your system.
 
 ## 🎯 Usage
 
@@ -116,7 +119,7 @@ Downloads are automatically organized with descriptive filenames:
 ## 🔧 How It Works
 
 1. **URL Processing**: Extracts anime ID and title from the provided URL
-2. **Episode Discovery**: Uses Selenium to scrape episode information and anime title
+2. **Episode Discovery**: Uses Playwright to scrape episode information and anime title
 3. **Link Resolution**: Bypasses DDoS-Guard and resolves download links
 4. **Extension Detection**: Analyzes HTTP headers to determine correct file extensions
 5. **Intelligent Naming**: Creates filenames with anime title, episode number, and proper extension
@@ -144,7 +147,7 @@ python build.py
 pip install pyinstaller
 
 # Build the executable with custom icon
-pyinstaller --onefile --hidden-import=webdriver_manager --hidden-import=selenium --hidden-import=webview --hidden-import=webview.platforms.winforms --hidden-import=clr --hidden-import=pythonnet --hidden-import=flask --hidden-import=beautifulsoup4 --hidden-import=lxml --hidden-import=requests --hidden-import=urllib3 --name=pahe-downloader --clean --noconsole --icon=static/icon.ico main.py
+pyinstaller --onefile --hidden-import=webdriver_manager --hidden-import=playwright --hidden-import=webview --hidden-import=webview.platforms.winforms --hidden-import=clr --hidden-import=pythonnet --hidden-import=flask --hidden-import=beautifulsoup4 --hidden-import=lxml --hidden-import=requests --hidden-import=urllib3 --name=pahe-downloader --clean --noconsole --icon=static/icon.ico main.py
 ```
 
 The executable will be created in the `dist/` folder as `pahe-downloader.exe` with the custom application icon.
@@ -177,8 +180,8 @@ This application is intended for **personal use only**. Downloading copyrighted 
 
 - **Backend**: Flask web framework running locally
 - **Frontend**: PyWebView desktop application wrapper
-- **Web Scraping**: Selenium WebDriver with automated Chrome driver management
-- **Driver Management**: webdriver-manager for cross-platform compatibility
+- **Web Scraping**: Playwright with automated browser management
+- **Browser Management**: Playwright handles cross-platform browser setup
 - **File Handling**: Dynamic extension detection and intelligent naming
 - **Styling**: Custom CSS with modern design principles
 - **Icons**: Unicode emojis for lightweight iconography

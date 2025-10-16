@@ -6,12 +6,7 @@ import os
 import zipfile
 import threading
 from typing import List, Dict, Optional, Union, TypedDict, Callable, Any, Tuple
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+from playwright.sync_api import sync_playwright, Browser, Page
 import time
 import queue
 import atexit
@@ -20,44 +15,46 @@ import urllib3
 # Browser Manager for optimized resource usage
 class BrowserManager:
     def __init__(self):
-        self.driver: Optional[webdriver.Chrome] = None
+        self.playwright = None
+        self.browser: Optional[Browser] = None
+        self.page: Optional[Page] = None
         self.task_queue: queue.Queue[Tuple[int, Callable[..., Any], Tuple[Any, ...], Dict[str, Any]]] = queue.Queue()
-        self.max_operations_per_driver = 50  # Restart after this many operations
+        self.max_operations_per_page = 50  # Restart after this many operations
         self.operation_count = 0
         self.worker_thread: Optional[threading.Thread] = None
         self.is_running = False
         self.results: Dict[int, Dict[str, Any]] = {}  # Store results by task_id
         self.task_id_counter = 0
-        self._initialize_driver()
+        self._initialize_browser()
         self._start_worker()
 
-    def _initialize_driver(self):
-        """Initialize Chrome driver with optimized options"""
-        options = Options()
-        # Headless mode for resource efficiency
-        options.add_argument("--headless=new")
-        options.add_argument("--disable-gpu")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-extensions")
-        options.add_argument("--disable-background-networking")
-        options.add_argument("--disable-software-rasterizer")
-        options.add_argument("--disable-web-security")
-        options.add_argument("--disable-features=VizDisplayCompositor")
-        options.add_argument("--window-size=1920,1080")
-        options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36")
-
-        # Memory and performance optimizations
-        options.add_argument("--memory-pressure-off")
-        options.add_argument("--max_old_space_size=4096")
-        options.add_argument("--disable-background-timer-throttling")
-        options.add_argument("--disable-renderer-backgrounding")
-        options.add_argument("--disable-backgrounding-occluded-windows")
-
-        service = Service(executable_path='chromedriver-win64/chromedriver.exe')
-        self.driver = webdriver.Chrome(service=service, options=options)
+    def _initialize_browser(self):
+        """Initialize Playwright browser with optimized options"""
+        self.playwright = sync_playwright().start()
+        self.browser = self.playwright.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-gpu",
+                "--disable-dev-shm-usage",
+                "--no-sandbox",
+                "--disable-extensions",
+                "--disable-background-networking",
+                "--disable-software-rasterizer",
+                "--disable-web-security",
+                "--disable-features=VizDisplayCompositor",
+                "--window-size=1920,1080",
+                "--memory-pressure-off",
+                "--max_old_space_size=4096",
+                "--disable-background-timer-throttling",
+                "--disable-renderer-backgrounding",
+                "--disable-backgrounding-occluded-windows"
+            ]
+        )
+        self.page = self.browser.new_page(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"
+        )
         self.operation_count = 0
-        print("DEBUG: BrowserManager initialized new Chrome driver")
+        print("DEBUG: BrowserManager initialized new Playwright browser")
 
     def _start_worker(self):
         """Start the worker thread to process queued tasks"""
@@ -86,37 +83,49 @@ class BrowserManager:
             except Exception as e:
                 print(f"DEBUG: Queue processing error: {e}")
 
-    def _restart_driver_if_needed(self):
-        """Restart driver if operation limit reached"""
-        if self.operation_count >= self.max_operations_per_driver:
-            print(f"DEBUG: Restarting driver after {self.operation_count} operations")
-            self._quit_driver()
-            self._initialize_driver()
+    def _restart_browser_if_needed(self):
+        """Restart browser if operation limit reached"""
+        if self.operation_count >= self.max_operations_per_page:
+            print(f"DEBUG: Restarting browser after {self.operation_count} operations")
+            self._close_browser()
+            self._initialize_browser()
 
-    def _quit_driver(self):
-        """Safely quit the current driver"""
-        if self.driver:
+    def _close_browser(self):
+        """Safely close the current browser"""
+        if self.page:
             try:
-                self.driver.quit()
+                self.page.close()
             except Exception as e:
-                print(f"DEBUG: Error quitting driver: {e}")
-            self.driver = None
+                print(f"DEBUG: Error closing page: {e}")
+            self.page = None
+        if self.browser:
+            try:
+                self.browser.close()
+            except Exception as e:
+                print(f"DEBUG: Error closing browser: {e}")
+            self.browser = None
+        if self.playwright:
+            try:
+                self.playwright.stop()
+            except Exception as e:
+                print(f"DEBUG: Error stopping playwright: {e}")
+            self.playwright = None
 
     def execute_task(self, task_func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-        """Execute a browser task, handling driver lifecycle"""
-        self._restart_driver_if_needed()
+        """Execute a browser task, handling browser lifecycle"""
+        self._restart_browser_if_needed()
 
-        if not self.driver:
-            raise Exception("Browser driver not available")
+        if not self.page:
+            raise Exception("Browser page not available")
 
         try:
-            result = task_func(self.driver, *args, **kwargs)
+            result = task_func(self.page, *args, **kwargs)
             self.operation_count += 1
             return result
         except Exception as e:
             print(f"DEBUG: Task execution failed: {e}")
-            # If task fails, restart driver on next operation
-            self._quit_driver()
+            # If task fails, restart browser on next operation
+            self._close_browser()
             raise e
 
     def submit_task(self, task_func: Callable[..., Any], *args: Any, **kwargs: Any) -> int:
@@ -156,8 +165,8 @@ class BrowserManager:
             except Exception as e:
                 print(f"DEBUG: Error joining worker thread: {e}")
         
-        # Quit driver
-        self._quit_driver()
+        # Close browser
+        self._close_browser()
         print("DEBUG: BrowserManager cleanup complete")
 
 # Global browser manager instance
@@ -221,20 +230,19 @@ def decrypt(full_string: str, key: str, v1: str, v2: str) -> str:
         i += 1
     return r
 
-def get_episodes_task(driver: webdriver.Chrome, siteLink: str, domain: str = "animepahe.si") -> List[Episode]:
-    """Task function for getting episodes using the shared driver"""
+def get_episodes_task(page: Page, siteLink: str, domain: str = "animepahe.si") -> List[Episode]:
+    """Task function for getting episodes using the shared page"""
     url = f"https://{domain}/anime/{siteLink}"
-    print(f"DEBUG: Fetching anime page with Selenium: {url}")
+    print(f"DEBUG: Fetching anime page with Playwright: {url}")
 
-    driver.get(url)
+    page.goto(url)
     print("DEBUG: Page loaded, waiting for content...")
 
     # Wait for episode links to load with a longer timeout
-    wait = WebDriverWait(driver, 30)
-    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "a[href*='/play/']")))
+    page.wait_for_selector("a[href*='/play/']", timeout=30000)
     print("DEBUG: Episode links found")
 
-    page_source = driver.page_source
+    page_source = page.content()
 
     soup = BeautifulSoup(page_source, 'html.parser')
     print(f"DEBUG: Page title: {soup.title.text if soup.title else 'No title'}")
@@ -295,13 +303,10 @@ def get_episodes(siteLink: str, domain: str = "animepahe.si") -> List[Episode]:
         print(f"DEBUG: Exception in get_episodes: {e}")
         return []
 
-def get_download_options_task(driver: webdriver.Chrome, ep_link: str) -> List[DownloadOption]:
-    """Task function for getting download options using the shared driver"""
-    driver.get(ep_link)
+def get_download_options_task(page: Page, ep_link: str) -> List[DownloadOption]:
+    """Task function for getting download options using the shared page"""
+    page.goto(ep_link)
     print("DEBUG: Loaded episode page, waiting for download options...")
-
-    # Wait for the page to load and find the download dropdown
-    wait = WebDriverWait(driver, 30)
 
     # Try to find and click the download dropdown toggle
     try:
@@ -317,8 +322,7 @@ def get_download_options_task(driver: webdriver.Chrome, ep_link: str) -> List[Do
         dropdown_clicked = False
         for selector in dropdown_selectors:
             try:
-                dropdown_toggle = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, selector)))
-                dropdown_toggle.click()
+                page.click(selector, timeout=5000)
                 print(f"DEBUG: Clicked dropdown toggle: {selector}")
                 dropdown_clicked = True
                 break
@@ -335,10 +339,10 @@ def get_download_options_task(driver: webdriver.Chrome, ep_link: str) -> List[Do
     time.sleep(2)
 
     # Wait for download options to load
-    wait.until(EC.presence_of_element_located((By.CLASS_NAME, "dropdown-item")))
+    page.wait_for_selector(".dropdown-item", timeout=30000)
     print("DEBUG: Download options found")
 
-    page_source = driver.page_source
+    page_source = page.content()
     soup = BeautifulSoup(page_source, 'html.parser')
     options_list: List[DownloadOption] = []
     for a in soup.find_all('a', class_='dropdown-item'):
@@ -383,26 +387,28 @@ def get_download_options(ep_link: str) -> List[DownloadOption]:
         print(f"Exception in get_download_options: {e}")
         return []
 
-def get_download_link_task(driver: webdriver.Chrome, pahe_win_url: str) -> Optional[str]:
-    """Task function for getting download link redirect URL using the shared driver"""
+def get_download_link_task(page: Page, pahe_win_url: str) -> Optional[str]:
+    """Task function for getting download link redirect URL using the shared page"""
     print(f"DEBUG: Loading pahe.win page: {pahe_win_url}")
-    driver.get(pahe_win_url)
+    page.goto(pahe_win_url)
 
     # Wait for the "Continue" link to appear (it appears after the countdown)
-    continue_link = WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.XPATH, "//a[contains(text(), 'Continue')]"))
-    )
-    redirect_url = continue_link.get_attribute('href')  # type: ignore
-    if redirect_url is None:
-        print("DEBUG: No redirect URL found")
+    continue_link = page.wait_for_selector("a:has-text('Continue')", timeout=10000)
+    if continue_link:
+        redirect_url = continue_link.get_attribute('href')
+        if redirect_url is None:
+            print("DEBUG: No redirect URL found")
+            return None
+        print(f"DEBUG: Found redirect URL: {redirect_url}")
+        return redirect_url
+    else:
+        print("DEBUG: Continue link not found")
         return None
-    print(f"DEBUG: Found redirect URL: {redirect_url}")
-    return redirect_url
 
 def get_download_link(pahe_win_url: str) -> Optional[str]:
     """Get download link using the browser manager for the browser part, then requests for the rest"""
     try:
-        # Use browser manager for the Selenium part
+        # Use browser manager for the Playwright part
         task_id = browser_manager.submit_task(get_download_link_task, pahe_win_url)
         redirect_url = browser_manager.get_result(task_id)
 
