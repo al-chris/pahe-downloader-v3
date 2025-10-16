@@ -1,4 +1,4 @@
-from app import app, browser_manager
+from app import app
 import signal
 import sys
 from types import FrameType
@@ -13,10 +13,6 @@ def run_flask():
 def signal_handler(sig: int, frame: FrameType | None) -> None:
     """Handle graceful shutdown on Ctrl+C"""
     print('\n\nShutting down gracefully...')
-    try:
-        browser_manager.cleanup()
-    except Exception as e:
-        print(f"Error during cleanup: {e}")
     sys.exit(0)
 
 if __name__ == "__main__":
@@ -46,9 +42,7 @@ if __name__ == "__main__":
         
     except KeyboardInterrupt:
         print('\n\nShutting down gracefully...')
-        browser_manager.cleanup()
         sys.exit(0)
     except Exception as e:
         print(f"Error: {e}")
-        browser_manager.cleanup()
         sys.exit(1)

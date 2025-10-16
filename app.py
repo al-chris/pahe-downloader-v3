@@ -1,32 +1,24 @@
-from flask import Flask, request, render_template, send_file, jsonify
+from flask import Flask, request, render_template, send_file, jsonify, g
 import requests
 from bs4 import BeautifulSoup
 import re
 import os
 import zipfile
 import threading
-from typing import List, Dict, Optional, Union, TypedDict, Callable, Any, Tuple
+from typing import List, Optional, Union, TypedDict, Callable, Any
 from playwright.sync_api import sync_playwright, Browser, Page
 import time
-import queue
-import atexit
 import urllib3
 
-# Browser Manager for optimized resource usage
+# Browser Manager for per-request browser instances
 class BrowserManager:
     def __init__(self):
         self.playwright = None
         self.browser: Optional[Browser] = None
         self.page: Optional[Page] = None
-        self.task_queue: queue.Queue[Tuple[int, Callable[..., Any], Tuple[Any, ...], Dict[str, Any]]] = queue.Queue()
         self.max_operations_per_page = 50  # Restart after this many operations
         self.operation_count = 0
-        self.worker_thread: Optional[threading.Thread] = None
-        self.is_running = False
-        self.results: Dict[int, Dict[str, Any]] = {}  # Store results by task_id
-        self.task_id_counter = 0
         self._initialize_browser()
-        self._start_worker()
 
     def _initialize_browser(self):
         """Initialize Playwright browser with optimized options"""
@@ -55,33 +47,6 @@ class BrowserManager:
         )
         self.operation_count = 0
         print("DEBUG: BrowserManager initialized new Playwright browser")
-
-    def _start_worker(self):
-        """Start the worker thread to process queued tasks"""
-        if self.worker_thread and self.worker_thread.is_alive():
-            return
-
-        self.is_running = True
-        self.worker_thread = threading.Thread(target=self._process_queue, daemon=True)
-        self.worker_thread.start()
-        print("DEBUG: BrowserManager worker thread started")
-
-    def _process_queue(self):
-        """Worker thread that processes tasks from the queue"""
-        while self.is_running:
-            try:
-                task_id, task_func, args, kwargs = self.task_queue.get(timeout=1)
-                try:
-                    result = self.execute_task(task_func, *args, **kwargs)
-                    self.results[task_id] = {'result': result, 'error': None}
-                except Exception as e:
-                    self.results[task_id] = {'result': None, 'error': str(e)}
-                finally:
-                    self.task_queue.task_done()
-            except queue.Empty:
-                continue
-            except Exception as e:
-                print(f"DEBUG: Queue processing error: {e}")
 
     def _restart_browser_if_needed(self):
         """Restart browser if operation limit reached"""
@@ -128,52 +93,17 @@ class BrowserManager:
             self._close_browser()
             raise e
 
-    def submit_task(self, task_func: Callable[..., Any], *args: Any, **kwargs: Any) -> int:
-        """Submit a task to the queue and return a task ID"""
-        task_id = self.task_id_counter
-        self.task_id_counter += 1
-        self.task_queue.put((task_id, task_func, args, kwargs))
-        return task_id
-
-    def get_result(self, task_id: int, timeout: float = 30) -> Any:
-        """Get the result of a queued task"""
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            if task_id in self.results:
-                result = self.results.pop(task_id)
-                if result['error']:
-                    raise Exception(result['error'])
-                return result['result']
-            time.sleep(0.1)
-        raise Exception(f"Task {task_id} timed out")
-
     def cleanup(self):
         """Cleanup resources"""
         print("DEBUG: Starting BrowserManager cleanup...")
-        self.is_running = False
-        
-        # Wait for queue to finish processing
-        try:
-            self.task_queue.join()
-        except Exception as e:
-            print(f"DEBUG: Error waiting for queue: {e}")
-        
-        # Stop worker thread
-        if self.worker_thread and self.worker_thread.is_alive():
-            try:
-                self.worker_thread.join(timeout=5)
-            except Exception as e:
-                print(f"DEBUG: Error joining worker thread: {e}")
-        
-        # Close browser
         self._close_browser()
         print("DEBUG: BrowserManager cleanup complete")
 
-# Global browser manager instance
-browser_manager = BrowserManager()
-
-# Register cleanup on exit
-atexit.register(browser_manager.cleanup)
+def get_browser_manager() -> BrowserManager:
+    """Get or create a browser manager for the current request"""
+    if 'browser_manager' not in g:
+        g.browser_manager = BrowserManager()
+    return g.browser_manager
 
 # Global download status
 download_status: dict[str, Union[bool, int, str, float]] = {
@@ -196,6 +126,13 @@ class DownloadOption(TypedDict):
     group: str
 
 app = Flask(__name__)
+
+@app.teardown_request
+def cleanup_browser_manager(exception: Optional[BaseException] = None):
+    """Clean up browser manager after each request"""
+    browser_manager = g.pop('browser_manager', None)
+    if browser_manager:
+        browser_manager.cleanup()
 
 def get_ddg_cookies(url: str) -> str:
     r = requests.get('https://check.ddos-guard.net/check.js', headers={'referer': url})
@@ -297,8 +234,7 @@ def get_episodes_task(page: Page, siteLink: str, domain: str = "animepahe.si") -
 def get_episodes(siteLink: str, domain: str = "animepahe.si") -> List[Episode]:
     """Get episodes using the browser manager"""
     try:
-        task_id = browser_manager.submit_task(get_episodes_task, siteLink, domain)
-        return browser_manager.get_result(task_id)
+        return get_browser_manager().execute_task(get_episodes_task, siteLink, domain)
     except Exception as e:
         print(f"DEBUG: Exception in get_episodes: {e}")
         return []
@@ -381,8 +317,7 @@ def get_download_options_task(page: Page, ep_link: str) -> List[DownloadOption]:
 def get_download_options(ep_link: str) -> List[DownloadOption]:
     """Get download options using the browser manager"""
     try:
-        task_id = browser_manager.submit_task(get_download_options_task, ep_link)
-        return browser_manager.get_result(task_id)
+        return get_browser_manager().execute_task(get_download_options_task, ep_link)
     except Exception as e:
         print(f"Exception in get_download_options: {e}")
         return []
@@ -409,8 +344,7 @@ def get_download_link(pahe_win_url: str) -> Optional[str]:
     """Get download link using the browser manager for the browser part, then requests for the rest"""
     try:
         # Use browser manager for the Playwright part
-        task_id = browser_manager.submit_task(get_download_link_task, pahe_win_url)
-        redirect_url = browser_manager.get_result(task_id)
+        redirect_url = get_browser_manager().execute_task(get_download_link_task, pahe_win_url)
 
         if not redirect_url:
             return None

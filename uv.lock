@@ -449,7 +449,7 @@ wheels = [
 ]
 
 [[package]]
-name = "pahe-downloader"
+name = "pahe-downloader-v3"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
