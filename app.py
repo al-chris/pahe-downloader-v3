@@ -467,139 +467,147 @@ def download_selected():
     return render_template('downloading.html', episode_count=len(selected_eps))
 
 def process_downloads(selected_eps: List[Episode]) -> None:
-    global download_status
-    download_dir = 'downloads'
-    os.makedirs(download_dir, exist_ok=True)
-    print(f"DEBUG: Created downloads directory: {download_dir}")
-    print(f"DEBUG: Processing {len(selected_eps)} episodes")
-
-    download_status['status_message'] = f'Processing {len(selected_eps)} episodes...'
-
-    def download_ep(ep: Episode) -> None:
+    # Create application context for background thread
+    with app.app_context():
         global download_status
-        print(f"DEBUG: Processing episode {ep['number']}: {ep['link']}")
-        download_status['status_message'] = f'Finding download options for episode {ep["number"]}...'
-        
-        options = get_download_options(str(ep['link']))
-        print(f"DEBUG: Download options: {options}")
+        download_dir = 'downloads'
+        os.makedirs(download_dir, exist_ok=True)
+        print(f"DEBUG: Created downloads directory: {download_dir}")
+        print(f"DEBUG: Processing {len(selected_eps)} episodes")
 
-        if not options:
-            print(f"DEBUG: No download options found for episode {ep['number']}")
-            return
+        download_status['status_message'] = f'Processing {len(selected_eps)} episodes...'
 
-        download_status['status_message'] = f'Selecting quality for episode {ep["number"]}...'
-        pahe_url = None
-
-        # Prefer 720p, but fall back to highest available quality
-        preferred_resolutions = ['720', '1080', '480', '360']
-        for pref_res in preferred_resolutions:
-            for opt in options:
-                if opt['res'] == pref_res:
-                    pahe_url = opt['url']
-                    print(f"DEBUG: Selected {pref_res}p option: {pahe_url}")
-                    break
-            if pahe_url:
-                break
-
-        # If no preferred resolution found, take the first available
-        if not pahe_url and options:
-            pahe_url = options[0]['url']
-            print(f"DEBUG: No preferred resolution found, using: {pahe_url}")
-
-        if not pahe_url:
-            print(f"DEBUG: No download URL found for episode {ep['number']}")
-            return
-
-        download_status['status_message'] = f'Getting download link for episode {ep["number"]}...'
-        print(f"DEBUG: Getting download link from: {pahe_url}")
-        download_url = get_download_link(pahe_url)
-        print(f"DEBUG: Final download URL: {download_url}")
-
-        if not download_url:
-            print(f"DEBUG: No download URL obtained for episode {ep['number']}")
-            return
-
-        download_status['current_episode'] = ep['number']
-        download_status['status_message'] = f'Downloading episode {ep["number"]}...'
-        
-        # Determine file extension from download URL
-        extension = '.mp4'  # default fallback
-        try:
-            # Make a HEAD request to check headers without downloading
-            head_response = requests.head(download_url, timeout=10, allow_redirects=True)
-            content_type = head_response.headers.get('content-type', '').lower()
-            content_disposition = head_response.headers.get('content-disposition', '')
+        def download_ep(ep: Episode) -> None:
+            global download_status
+            print(f"DEBUG: Processing episode {ep['number']}: {ep['link']}")
+            download_status['status_message'] = f'Finding download options for episode {ep["number"]}...'
             
-            # Check Content-Disposition for filename
-            if 'filename=' in content_disposition:
-                filename_part = content_disposition.split('filename=')[-1].strip('"\'')
-                if '.' in filename_part:
-                    ext = '.' + filename_part.split('.')[-1].lower()
-                    if ext in ['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm']:
-                        extension = ext
-            
-            # Fallback to Content-Type mapping
-            if extension == '.mp4':
-                if 'video/mp4' in content_type:
-                    extension = '.mp4'
-                elif 'video/x-matroska' in content_type or 'video/webm' in content_type:
-                    extension = '.mkv'
-                elif 'video/avi' in content_type:
-                    extension = '.avi'
-                elif 'video/quicktime' in content_type:
-                    extension = '.mov'
-                elif 'video/x-ms-wmv' in content_type:
-                    extension = '.wmv'
-                elif 'video/x-flv' in content_type:
-                    extension = '.flv'
-                    
-        except Exception as e:
-            print(f"DEBUG: Could not determine file extension, using default .mp4: {e}")
-        
-        # Sanitize anime name for filename (remove invalid characters)
-        safe_anime_name = "".join(c for c in ep['anime_name'] if c.isalnum() or c in (' ', '-', '_')).rstrip()
-        filename = f"{safe_anime_name}_Episode_{str(ep['number'])}{extension}"
-        filepath = os.path.join(download_dir, filename)
-        print(f"DEBUG: Downloading to: {filepath}")
-
-        try:
-            # First attempt with SSL verification enabled
+            # Create a new browser instance for this download operation
+            local_browser_manager = BrowserManager()
             try:
-                with requests.get(download_url, stream=True, timeout=30, verify=True) as r:
-                    r.raise_for_status()
-                    total_size = int(r.headers.get('content-length', 0))
-                    downloaded = 0
-                    with open(filepath, 'wb') as f:
-                        for chunk in r.iter_content(chunk_size=8192):
-                            if chunk:
-                                f.write(chunk)
-                                downloaded += len(chunk)
-                                if total_size > 0:
-                                    episode_progress = (downloaded / total_size) * 100
-                                    overall_progress = ((int(ep['number']) - 1) / len(selected_eps) * 100) + (episode_progress / len(selected_eps))
-                                    download_status['progress'] = min(overall_progress, 90)
-                print(f"DEBUG: Successfully downloaded {filename}")
-            except requests.exceptions.SSLError as ssl_error:
-                # SSL verification failed, retry with verification disabled
-                print(f"DEBUG: SSL verification failed for {filename}, retrying with SSL verification disabled: {ssl_error}")
-                # Suppress SSL warnings for this request
-                urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-                with requests.get(download_url, stream=True, timeout=30, verify=False) as r:
-                    r.raise_for_status()
-                    total_size = int(r.headers.get('content-length', 0))
-                    downloaded = 0
-                    with open(filepath, 'wb') as f:
-                        for chunk in r.iter_content(chunk_size=8192):
-                            if chunk:
-                                f.write(chunk)
-                                downloaded += len(chunk)
-                                if total_size > 0:
-                                    episode_progress = (downloaded / total_size) * 100
-                                    overall_progress = ((int(ep['number']) - 1) / len(selected_eps) * 100) + (episode_progress / len(selected_eps))
-                                    download_status['progress'] = min(overall_progress, 90)
-                print(f"DEBUG: Successfully downloaded {filename} (SSL verification disabled)")
-        except Exception as e:
-            print(f"DEBUG: Download failed for {filename}: {e}")
+                options = local_browser_manager.execute_task(get_download_options_task, str(ep['link']))
+                print(f"DEBUG: Download options: {options}")
+
+                if not options:
+                    print(f"DEBUG: No download options found for episode {ep['number']}")
+                    return
+
+                download_status['status_message'] = f'Selecting quality for episode {ep["number"]}...'
+                pahe_url = None
+
+                # Prefer 720p, but fall back to highest available quality
+                preferred_resolutions = ['720', '1080', '480', '360']
+                for pref_res in preferred_resolutions:
+                    for opt in options:
+                        if opt['res'] == pref_res:
+                            pahe_url = opt['url']
+                            print(f"DEBUG: Selected {pref_res}p option: {pahe_url}")
+                            break
+                    if pahe_url:
+                        break
+
+                # If no preferred resolution found, take the first available
+                if not pahe_url and options:
+                    pahe_url = options[0]['url']
+                    print(f"DEBUG: No preferred resolution found, using: {pahe_url}")
+
+                if not pahe_url:
+                    print(f"DEBUG: No download URL found for episode {ep['number']}")
+                    return
+
+                download_status['status_message'] = f'Getting download link for episode {ep["number"]}...'
+                print(f"DEBUG: Getting download link from: {pahe_url}")
+                download_url = local_browser_manager.execute_task(get_download_link_task, pahe_url)
+                print(f"DEBUG: Final download URL: {download_url}")
+
+                if not download_url:
+                    print(f"DEBUG: No download URL obtained for episode {ep['number']}")
+                    return
+
+                download_status['current_episode'] = ep['number']
+                download_status['status_message'] = f'Downloading episode {ep["number"]}...'
+                
+                # Determine file extension from download URL
+                extension = '.mp4'  # default fallback
+                try:
+                    # Make a HEAD request to check headers without downloading
+                    head_response = requests.head(download_url, timeout=10, allow_redirects=True)
+                    content_type = head_response.headers.get('content-type', '').lower()
+                    content_disposition = head_response.headers.get('content-disposition', '')
+                    
+                    # Check Content-Disposition for filename
+                    if 'filename=' in content_disposition:
+                        filename_part = content_disposition.split('filename=')[-1].strip('"\'')
+                        if '.' in filename_part:
+                            ext = '.' + filename_part.split('.')[-1].lower()
+                            if ext in ['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm']:
+                                extension = ext
+                    
+                    # Fallback to Content-Type mapping
+                    if extension == '.mp4':
+                        if 'video/mp4' in content_type:
+                            extension = '.mp4'
+                        elif 'video/x-matroska' in content_type or 'video/webm' in content_type:
+                            extension = '.mkv'
+                        elif 'video/avi' in content_type:
+                            extension = '.avi'
+                        elif 'video/quicktime' in content_type:
+                            extension = '.mov'
+                        elif 'video/x-ms-wmv' in content_type:
+                            extension = '.wmv'
+                        elif 'video/x-flv' in content_type:
+                            extension = '.flv'
+                            
+                except Exception as e:
+                    print(f"DEBUG: Could not determine file extension, using default .mp4: {e}")
+                
+                # Sanitize anime name for filename (remove invalid characters)
+                safe_anime_name = "".join(c for c in ep['anime_name'] if c.isalnum() or c in (' ', '-', '_')).rstrip()
+                filename = f"{safe_anime_name}_Episode_{str(ep['number'])}{extension}"
+                filepath = os.path.join(download_dir, filename)
+                print(f"DEBUG: Downloading to: {filepath}")
+
+                try:
+                    # First attempt with SSL verification enabled
+                    try:
+                        with requests.get(download_url, stream=True, timeout=30, verify=True) as r:
+                            r.raise_for_status()
+                            total_size = int(r.headers.get('content-length', 0))
+                            downloaded = 0
+                            with open(filepath, 'wb') as f:
+                                for chunk in r.iter_content(chunk_size=8192):
+                                    if chunk:
+                                        f.write(chunk)
+                                        downloaded += len(chunk)
+                                        if total_size > 0:
+                                            episode_progress = (downloaded / total_size) * 100
+                                            overall_progress = ((int(ep['number']) - 1) / len(selected_eps) * 100) + (episode_progress / len(selected_eps))
+                                            download_status['progress'] = min(overall_progress, 90)
+                        print(f"DEBUG: Successfully downloaded {filename}")
+                    except requests.exceptions.SSLError as ssl_error:
+                        # SSL verification failed, retry with verification disabled
+                        print(f"DEBUG: SSL verification failed for {filename}, retrying with SSL verification disabled: {ssl_error}")
+                        # Suppress SSL warnings for this request
+                        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+                        with requests.get(download_url, stream=True, timeout=30, verify=False) as r:
+                            r.raise_for_status()
+                            total_size = int(r.headers.get('content-length', 0))
+                            downloaded = 0
+                            with open(filepath, 'wb') as f:
+                                for chunk in r.iter_content(chunk_size=8192):
+                                    if chunk:
+                                        f.write(chunk)
+                                        downloaded += len(chunk)
+                                        if total_size > 0:
+                                            episode_progress = (downloaded / total_size) * 100
+                                            overall_progress = ((int(ep['number']) - 1) / len(selected_eps) * 100) + (episode_progress / len(selected_eps))
+                                            download_status['progress'] = min(overall_progress, 90)
+                        print(f"DEBUG: Successfully downloaded {filename} (SSL verification disabled)")
+                except Exception as e:
+                    print(f"DEBUG: Download failed for {filename}: {e}")
+            finally:
+                # Clean up the local browser manager
+                local_browser_manager.cleanup()
 
     threads: List[threading.Thread] = []
     for ep in selected_eps:
