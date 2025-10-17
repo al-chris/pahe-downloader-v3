@@ -1,6 +1,25 @@
+import os
+import sys
+
+# --- Block to set Playwright browsers path when bundled ---
+if getattr(sys, 'frozen', False):
+    # This block of code will only run when the app is packaged by PyInstaller
+    print("Running in bundled mode")
+    
+    # sys._MEIPASS is the path to the temporary folder where PyInstaller unpacks your app
+    browsers_path = os.path.join(sys._MEIPASS, 'ms-playwright') # type: ignore
+    
+    # Set the environment variable for Playwright
+    os.environ['PLAYWRIGHT_BROWSERS_PATH'] = browsers_path
+    print(f"Set PLAYWRIGHT_BROWSERS_PATH to: {browsers_path}")
+else:
+    # This block will run when you run the script normally (e.g., `python main.py`)
+    print("Running in development mode")
+
+# --- End of Playwright browsers path block ---
+
 from app import app
 import signal
-import sys
 from types import FrameType
 import threading
 import webview
