@@ -21,7 +21,6 @@ def build_executable():
         "--onefile",
         "--collect-all=flask",
         "--collect-all=playwright",
-        "--collect-all=beautifulsoup4",
         "--hidden-import=webdriver_manager",
         "--hidden-import=webview",
         "--hidden-import=webview.platforms.winforms",
