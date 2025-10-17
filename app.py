@@ -151,11 +151,11 @@ def get_ddg_cookies(url: str) -> str:
 def format_file_size(bytes_size: int) -> str:
     """Format bytes to human readable format (MB/GB)"""
     if bytes_size >= 1024 * 1024 * 1024:  # GB
-        return ".1f"
+        return f"{bytes_size / (1024 * 1024 * 1024):.1f} GB"
     elif bytes_size >= 1024 * 1024:  # MB
-        return ".1f"
+        return f"{bytes_size / (1024 * 1024):.1f} MB"
     elif bytes_size >= 1024:  # KB
-        return ".1f"
+        return f"{bytes_size / 1024:.1f} KB"
     else:  # Bytes
         return f"{bytes_size} bytes"
 
