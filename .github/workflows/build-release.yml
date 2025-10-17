@@ -38,13 +38,13 @@ jobs:
 
     - name: Build executable
       run: |
-        uv run pyinstaller --onefile --paths=.venv/Lib/site-packages --collect-all=flask --collect-all=playwright --hidden-import=beautifulsoup4 --hidden-import=webview --hidden-import=webview.platforms.winforms --hidden-import=clr --hidden-import=pythonnet --hidden-import=lxml --hidden-import=requests --hidden-import=urllib3 --name=pahe-downloader --clean --noconsole --icon=static/icon.ico main.py
+        uv run pyinstaller --onefile --paths=.venv/Lib/site-packages --collect-all=flask --collect-all=playwright --hidden-import=beautifulsoup4 --hidden-import=webview --hidden-import=webview.platforms.winforms --hidden-import=clr --hidden-import=pythonnet --hidden-import=lxml --hidden-import=requests --hidden-import=urllib3 --name=pahe-downloader-playwright --clean --noconsole --icon=static/icon.ico main.py
 
     - name: Verify executable exists
       run: |
-        if (Test-Path "dist\pahe-downloader.exe") {
+        if (Test-Path "dist\pahe-downloader-playwright.exe") {
           Write-Host "Executable created successfully"
-          Get-Item "dist\pahe-downloader.exe" | Select-Object Name, Length
+          Get-Item "dist\pahe-downloader-playwright.exe" | Select-Object Name, Length
         } else {
           Write-Error "Executable not found!"
           exit 1
@@ -53,8 +53,8 @@ jobs:
     - name: Generate checksum
       run: |
         $hash = Get-FileHash -Path "dist\pahe-downloader.exe" -Algorithm SHA256
-        "$($hash.Hash)  pahe-downloader.exe" | Out-File -FilePath "dist\pahe-downloader.exe.sha256" -Encoding ASCII
-        Get-Content "dist\pahe-downloader.exe.sha256"
+        "$($hash.Hash)  pahe-downloader-playwright.exe" | Out-File -FilePath "dist\pahe-downloader-playwright.exe.sha256" -Encoding ASCII
+        Get-Content "dist\pahe-downloader-playwright.exe.sha256"
 
     - name: Upload executable and checksum to release
       if: github.event_name == 'release'
