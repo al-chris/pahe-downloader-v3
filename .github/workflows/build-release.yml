@@ -52,7 +52,7 @@ jobs:
 
     - name: Generate checksum
       run: |
-        $hash = Get-FileHash -Path "dist\pahe-downloader.exe" -Algorithm SHA256
+        $hash = Get-FileHash -Path "dist\pahe-downloader-playwright.exe" -Algorithm SHA256
         "$($hash.Hash)  pahe-downloader-playwright.exe" | Out-File -FilePath "dist\pahe-downloader-playwright.exe.sha256" -Encoding ASCII
         Get-Content "dist\pahe-downloader-playwright.exe.sha256"
 
