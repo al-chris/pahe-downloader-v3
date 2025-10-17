@@ -32,13 +32,28 @@ jobs:
       run: |
         uv run playwright install chromium
 
+    - name: Copy downloaded Playwright browsers into the repo (will be bundled)
+      run: |
+        # Copy the ms-playwright cache (where Playwright downloaded Chromium) into the workspace
+        # This directory will be added to the executable with PyInstaller (--add-data).
+        # $env:LOCALAPPDATA resolves to C:\Users\runneradmin\AppData\Local on the runner.
+        if (Test-Path "$env:LOCALAPPDATA\ms-playwright") {
+          Remove-Item -Path ".\ms-playwright" -Recurse -Force -ErrorAction SilentlyContinue || $null
+          Copy-Item -Path "$env:LOCALAPPDATA\ms-playwright" -Destination "$PWD\ms-playwright" -Recurse -Force
+          Write-Host "ms-playwright copied to $PWD\ms-playwright"
+          Get-ChildItem ".\ms-playwright" -Depth 1 | Select-Object Name,FullName
+        } else {
+          Write-Error "ms-playwright not found at $env:LOCALAPPDATA\ms-playwright"
+          exit 1
+        }
+
     - name: Install PyInstaller
       run: |
-        uv run pip install pyinstaller
+        uv add pyinstaller
 
     - name: Build executable
       run: |
-        uv run pyinstaller --onefile --paths=.venv/Lib/site-packages --collect-all=flask --collect-all=playwright --hidden-import=webview --hidden-import=webview.platforms.winforms --hidden-import=clr --hidden-import=pythonnet --hidden-import=lxml --hidden-import=requests --hidden-import=urllib3 --name=pahe-downloader-playwright --clean --noconsole --icon=static/icon.ico main.py
+        uv run pyinstaller --onefile --add-data "ms-playwright;ms-playwright" --collect-all=flask --collect-all=playwright --hidden-import=webview --hidden-import=webview.platforms.winforms --hidden-import=clr --hidden-import=pythonnet --hidden-import=lxml --hidden-import=requests --hidden-import=urllib3 --name=pahe-downloader-playwright --clean --noconsole --icon=static/icon.ico main.py
 
     - name: Verify executable exists
       run: |
