@@ -15,11 +15,9 @@ def build_executable():
     project_root = Path(__file__).parent
     os.chdir(project_root)
 
-    # TODO: Add any pre-build steps here
-
     # PyInstaller command with all necessary hidden imports
     cmd = [
-        sys.executable, "-m", "pyinstaller",
+        "uv", "run", "pyinstaller",
         "--onefile",
         "--add-data", "ms-playwright;ms-playwright",
         "--collect-all=flask",
