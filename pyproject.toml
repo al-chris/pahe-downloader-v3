@@ -12,4 +12,5 @@ dependencies = [
     "types-requests>=2.32.4.20250913",
     "pywebview>=6.0",
     "playwright>=1.55.0",
+    "pyinstaller>=6.16.0",
 ]

@@ -32,7 +32,7 @@ def build_executable():
         "--hidden-import=lxml",
         "--hidden-import=requests",
         "--hidden-import=urllib3",
-        "--name=pahe-downloader",
+        "--name=pahe-downloader-playwright",
         "--clean",
         "--noconsole",
         "--icon=static/icon.ico",
@@ -45,10 +45,10 @@ def build_executable():
     try:
         _ = subprocess.run(cmd, check=True, capture_output=True, text=True)
         print("Build completed successfully!")
-        print("Executable created at: dist/pahe-downloader.exe")
+        print("Executable created at: dist/pahe-downloader-playwright.exe")
 
         # Generate checksum
-        exe_path = project_root / "dist" / "pahe-downloader.exe"
+        exe_path = project_root / "dist" / "pahe-downloader-playwright.exe"
         if exe_path.exists():
             import hashlib
             with open(exe_path, "rb") as f:
@@ -56,7 +56,7 @@ def build_executable():
 
             checksum_file = exe_path.with_suffix(".exe.sha256")
             with open(checksum_file, "w") as f:
-                f.write(f"{checksum}  pahe-downloader.exe\n")
+                f.write(f"{checksum}  pahe-downloader-playwright.exe\n")
 
             print(f"SHA256 checksum: {checksum}")
             print(f"Checksum saved to: {checksum_file}")

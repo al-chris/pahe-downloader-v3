@@ -141,6 +141,16 @@ pip install pyinstaller
 python build.py
 ```
 
+or
+
+```bash
+# Install PyInstaller first
+uv add pyinstaller
+
+# Run the build script
+uv run build.py
+```
+
 #### Option 2: Manual PyInstaller Command
 ```bash
 # Install PyInstaller
@@ -168,8 +178,8 @@ The project includes automated CI/CD that builds releases:
 - **Trigger**: Creating a new release on GitHub automatically starts the build process
 - **Platform**: Windows executables (built on `windows-latest` runners)
 - **Artifacts**: 
-  - `pahe-downloader.exe` - The standalone executable with custom icon
-  - `pahe-downloader.exe.sha256` - SHA256 checksum for verification
+  - `pahe-downloader-playwright.exe` - The standalone executable with custom icon
+  - `pahe-downloader-playwright.exe.sha256` - SHA256 checksum for verification
 - **Manual Trigger**: You can also trigger builds manually using the "Run workflow" button
 
 ## ⚠️ Disclaimer
