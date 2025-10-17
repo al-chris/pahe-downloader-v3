@@ -455,7 +455,8 @@ def download():
                              heading="No Episodes Found",
                              message="No episodes were found for this anime. Please check that the URL is correct and points to a valid anime page.")
     print("DEBUG: Rendering select.html template")
-    return render_template('select.html', episodes=episodes, url=url)
+    anime_name = episodes[0]['anime_name'] if episodes else "Unknown Anime"
+    return render_template('select.html', episodes=episodes, url=url, anime_name=anime_name)
 
 @app.route('/download_selected', methods=['POST'])
 def download_selected():

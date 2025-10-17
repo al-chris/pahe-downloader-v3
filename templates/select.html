@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Select Episodes - Anime Downloader</title>
+    <title>{{ anime_name }} - Select Episodes - Anime Downloader</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
@@ -12,6 +12,7 @@
     <div class="container">
         <header class="header">
             <h1>🎯 Select Episodes</h1>
+            <h2 style="color: var(--text-color); margin: 0.5rem 0; font-size: 1.5rem; font-weight: 600;">{{ anime_name }}</h2>
             <p>Choose which episodes you want to download</p>
         </header>
 
