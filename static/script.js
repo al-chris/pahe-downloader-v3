@@ -31,21 +31,101 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    function updateSelectAllState() {
-        const checkedCount = document.querySelectorAll('.episode-checkbox:checked').length;
-        const totalCount = episodeCheckboxes.length;
+    // Episode selection form validation
+    const downloadSelectedForm = document.getElementById('download-selected-form');
+    const downloadSelectedButton = downloadSelectedForm ? downloadSelectedForm.querySelector('button[type="submit"]') : null;
 
-        if (selectAllCheckbox) {
-            selectAllCheckbox.checked = checkedCount === totalCount;
-            selectAllCheckbox.indeterminate = checkedCount > 0 && checkedCount < totalCount;
+    // Function to update episode download button state
+    function updateEpisodeDownloadButtonState() {
+        if (!downloadSelectedButton || !episodeCheckboxes.length) return;
+
+        const checkedCount = document.querySelectorAll('.episode-checkbox:checked').length;
+        const hasSelection = checkedCount > 0;
+
+        downloadSelectedButton.disabled = !hasSelection;
+
+        if (hasSelection) {
+            downloadSelectedButton.classList.remove('btn-disabled');
+            downloadSelectedButton.title = '';
+        } else {
+            downloadSelectedButton.classList.add('btn-disabled');
+            downloadSelectedButton.title = 'Please select at least one episode to download';
         }
     }
 
-    // Form validation
+    // Update episode button state when checkboxes change
+    if (episodeCheckboxes.length > 0) {
+        updateEpisodeDownloadButtonState(); // Initial state
+
+        episodeCheckboxes.forEach(checkbox => {
+            checkbox.addEventListener('change', updateEpisodeDownloadButtonState);
+        });
+
+        // Also update when select all changes
+        if (selectAllCheckbox) {
+            selectAllCheckbox.addEventListener('change', updateEpisodeDownloadButtonState);
+        }
+    }
+
+    // Handle episode selection form submission
+    if (downloadSelectedForm) {
+        downloadSelectedForm.addEventListener('submit', function(e) {
+            const checkedCount = document.querySelectorAll('.episode-checkbox:checked').length;
+
+            if (checkedCount === 0) {
+                e.preventDefault();
+                showAlert('Please select at least one episode to download', 'error');
+                return;
+            }
+
+            // Disable button to prevent duplicate submission
+            if (downloadSelectedButton) {
+                downloadSelectedButton.innerHTML = '<div class="spinner"></div> Starting Download...';
+                downloadSelectedButton.disabled = true;
+                downloadSelectedButton.style.pointerEvents = 'none'; // Extra protection
+            }
+        });
+    }
+
+    // Form validation and button state management
     const urlInput = document.getElementById('anime-url');
     const downloadForm = document.getElementById('download-form');
+    const downloadButton = downloadForm ? downloadForm.querySelector('button[type="submit"]') : null;
 
+    // Function to validate AnimePahe URL
+    function isValidAnimePaheUrl(url) {
+        if (!url || !url.trim()) return false;
+
+        const urlPattern = /^https:\/\/animepahe\.(si|ru|com)\/anime\/[^\/]+\/?$/i;
+        return urlPattern.test(url.trim());
+    }
+
+    // Function to update download button state
+    function updateDownloadButtonState() {
+        if (!downloadButton || !urlInput) return;
+
+        const url = urlInput.value.trim();
+        const isValid = isValidAnimePaheUrl(url);
+
+        downloadButton.disabled = !isValid;
+
+        if (isValid) {
+            downloadButton.classList.remove('btn-disabled');
+            downloadButton.title = '';
+        } else {
+            downloadButton.classList.add('btn-disabled');
+            downloadButton.title = 'Please enter a valid AnimePahe URL (e.g., https://animepahe.si/anime/anime-id)';
+        }
+    }
+
+    // URL input validation
     if (urlInput && downloadForm) {
+        // Initial state
+        updateDownloadButtonState();
+
+        // Update on input
+        urlInput.addEventListener('input', updateDownloadButtonState);
+
         downloadForm.addEventListener('submit', function(e) {
             const url = urlInput.value.trim();
             console.log('Form submit triggered with URL:', url);
@@ -57,29 +137,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
-            // More flexible URL validation - allow various animepahe domains
-            const animepaheRegex = /animepahe\./i;
-            const hasAnimepahe = animepaheRegex.test(url);
-            const hasAnimePath = url.includes('/anime/');
-
-            if (!hasAnimepahe) {
-                console.log('Validation warning: URL does not contain animepahe');
-                // Show warning but allow submission
-                showAlert('Warning: This doesn\'t look like an AnimePahe URL. Proceeding anyway...', 'warning');
-            }
-
-            if (!hasAnimePath) {
-                console.log('Validation warning: URL does not contain /anime/');
-                // Show warning but allow submission
-                showAlert('Warning: This doesn\'t look like a complete anime page URL. Proceeding anyway...', 'warning');
+            if (!isValidAnimePaheUrl(url)) {
+                console.log('Validation failed: invalid URL format');
+                e.preventDefault();
+                showAlert('Please enter a valid AnimePahe URL in the format: https://animepahe.si/anime/anime-id', 'error');
+                return;
             }
 
             console.log('Validation completed, allowing form submission');
-            // Show loading state only if validation passes
-            const submitBtn = downloadForm.querySelector('button[type="submit"]');
-            if (submitBtn) {
-                submitBtn.innerHTML = '<div class="spinner"></div> Processing...';
-                submitBtn.disabled = true;
+            // Disable button to prevent duplicate submission
+            if (downloadButton) {
+                downloadButton.innerHTML = '<div class="spinner"></div> Processing...';
+                downloadButton.disabled = true;
+                downloadButton.style.pointerEvents = 'none'; // Extra protection
             }
         });
     }
@@ -88,9 +158,8 @@ document.addEventListener('DOMContentLoaded', function() {
     if (urlInput) {
         urlInput.addEventListener('input', function() {
             const url = this.value.trim();
-            const animepaheRegex = /animepahe\./i;
 
-            if (url.includes('/anime/') && animepaheRegex.test(url)) {
+            if (isValidAnimePaheUrl(url)) {
                 this.style.borderColor = 'var(--success-color)';
             } else if (url.length > 0) {
                 this.style.borderColor = 'var(--warning-color)';

@@ -124,6 +124,7 @@ class DownloadOption(TypedDict):
     res: str
     url: str
     group: str
+    size: str
 
 app = Flask(__name__)
 
@@ -146,6 +147,17 @@ def get_ddg_cookies(url: str) -> str:
     r = requests.get('https://check.ddos-guard.net/check.js', headers={'referer': url})
     r.raise_for_status()
     return r.cookies.get_dict()['__ddg2']
+
+def format_file_size(bytes_size: int) -> str:
+    """Format bytes to human readable format (MB/GB)"""
+    if bytes_size >= 1024 * 1024 * 1024:  # GB
+        return ".1f"
+    elif bytes_size >= 1024 * 1024:  # MB
+        return ".1f"
+    elif bytes_size >= 1024:  # KB
+        return ".1f"
+    else:  # Bytes
+        return f"{bytes_size} bytes"
 
 def get_string(content: str, s1: int, s2: int) -> str:
     slice_2 = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ+/"[0:s2]
@@ -301,16 +313,18 @@ def get_download_options_task(page: Page, ep_link: str) -> List[DownloadOption]:
                 quality_part = parts[1].strip()
                 print(f"DEBUG: Parsing - Group: '{group}', Quality part: '{quality_part}'")
 
-                # Extract resolution from quality part (e.g., "720p (88MB)" -> "720")
+                # Extract resolution and size from quality part (e.g., "720p (88MB)" -> "720", "88MB")
                 import re
-                print(f"DEBUG: Searching for resolution in: '{quality_part}'")
+                print(f"DEBUG: Searching for resolution and size in: '{quality_part}'")
                 res_match = re.search(r'(\d+)p', quality_part)
-                print(f"DEBUG: Regex match result: {res_match}")
+                size_match = re.search(r'\((\d+(?:\.\d+)?)\s*(MB|GB|KB)\)', quality_part)
+                
                 if res_match:
                     res = res_match.group(1)
-                    print(f"DEBUG: Extracted resolution: {res}")
-                    options_list.append({'res': res, 'url': str(url), 'group': group})
-                    print(f"DEBUG: Parsed option - Group: {group}, Res: {res}p, URL: {url}")
+                    size = size_match.group(0) if size_match else "Unknown"
+                    print(f"DEBUG: Extracted resolution: {res}, size: {size}")
+                    options_list.append({'res': res, 'url': str(url), 'group': group, 'size': size})
+                    print(f"DEBUG: Parsed option - Group: {group}, Res: {res}p, Size: {size}, URL: {url}")
                 else:
                     print(f"DEBUG: Could not extract resolution from: '{quality_part}' - no regex match")
             else:
@@ -656,7 +670,7 @@ def process_downloads(selected_eps: List[Episode]) -> None:
                 print(f"DEBUG: Skipping {file} (not a file)")
 
     zip_size = os.path.getsize(zip_path) if os.path.exists(zip_path) else 0
-    print(f"DEBUG: ZIP file created successfully, size: {zip_size} bytes")
+    print(f"DEBUG: ZIP file created successfully, size: {format_file_size(zip_size)}")
     
     download_status['progress'] = 100
     download_status['status_message'] = 'Download complete! Preparing file...'
