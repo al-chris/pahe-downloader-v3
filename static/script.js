@@ -84,6 +84,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 downloadSelectedButton.disabled = true;
                 downloadSelectedButton.style.pointerEvents = 'none'; // Extra protection
             }
+
+            // Also disable the back to homepage button
+            const backButton = document.querySelector('a[href="/"].btn.btn-secondary');
+            if (backButton) {
+                backButton.style.pointerEvents = 'none';
+                backButton.style.opacity = '0.6';
+                backButton.title = 'Download in progress...';
+            }
         });
     }
 

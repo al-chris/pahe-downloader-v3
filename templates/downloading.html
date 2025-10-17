@@ -69,12 +69,34 @@
                     if (data.completed) {
                         clearInterval(progressInterval);
                         progressFill.style.width = '100%';
-                        progressText.textContent = 'Download ready! Starting download...';
+                        progressText.textContent = 'Download complete! Your file is ready.';
 
-                        // Small delay before redirecting to show completion
-                        setTimeout(() => {
-                            window.location.href = '/check_download';
-                        }, 1000);
+                        // Hide loading spinner and show completion message with download button
+                        const loadingDiv = document.querySelector('.loading');
+                        if (loadingDiv) {
+                            loadingDiv.style.display = 'none';
+                        }
+
+                        // Add completion actions
+                        const completionDiv = document.createElement('div');
+                        completionDiv.style.textAlign = 'center';
+                        completionDiv.style.marginTop = '2rem';
+                        completionDiv.innerHTML = `
+                            <div class="alert alert-success" style="margin-bottom: 1rem;">
+                                <span>✅ Download completed successfully!</span>
+                            </div>
+                            <a href="/check_download" class="btn btn-primary" style="margin-right: 1rem; text-decoration: none;">
+                                📥 Download ZIP File
+                            </a>
+                            <a href="/" class="btn btn-secondary" style="text-decoration: none;">
+                                🏠 Back to Homepage
+                            </a>
+                        `;
+
+                        const card = document.querySelector('.card');
+                        if (card) {
+                            card.appendChild(completionDiv);
+                        }
                     }
                 })
                 .catch(() => {
