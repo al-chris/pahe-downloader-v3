@@ -415,7 +415,10 @@ def download():
         print(f"DEBUG: Parsed domain: {domain}, anime_id: {anime_id}")
 
         if not anime_id:
-            return "Invalid URL format. Please provide a complete anime page URL."
+            return render_template('error.html',
+                                 title="Invalid URL",
+                                 heading="Invalid URL Format",
+                                 message="Please provide a complete anime page URL from AnimePahe.")
 
         # Use the domain from the user's URL instead of hardcoding animepahe.si
         full_url = f"https://{domain}/anime/{anime_id}"
@@ -423,14 +426,20 @@ def download():
 
     except Exception as e:
         print(f"DEBUG: URL parsing error: {e}")
-        return "Invalid URL format."
+        return render_template('error.html',
+                             title="Invalid URL",
+                             heading="Invalid URL Format",
+                             message="The provided URL could not be parsed. Please check the URL and try again.")
 
     print("DEBUG: Calling get_episodes...")
     episodes = get_episodes(anime_id, domain)
     print(f"DEBUG: Episodes found: {len(episodes)}")
     if not episodes:
         print("DEBUG: No episodes found, returning error message")
-        return "No episodes found or invalid URL. Please check that the URL is correct and try again."
+        return render_template('error.html',
+                             title="No Episodes Found",
+                             heading="No Episodes Found",
+                             message="No episodes were found for this anime. Please check that the URL is correct and points to a valid anime page.")
     print("DEBUG: Rendering select.html template")
     return render_template('select.html', episodes=episodes, url=url)
 
@@ -447,10 +456,16 @@ def download_selected():
         anime_id = path_parts[-1] if path_parts else ''
 
         if not anime_id:
-            return "Invalid URL format."
+            return render_template('error.html',
+                                 title="Invalid URL",
+                                 heading="Invalid URL Format",
+                                 message="Please provide a complete anime page URL from AnimePahe.")
 
     except Exception:
-        return "Invalid URL format."
+        return render_template('error.html',
+                             title="Invalid URL",
+                             heading="Invalid URL Format",
+                             message="The provided URL could not be parsed. Please check the URL and try again.")
 
     episodes = get_episodes(anime_id, domain)
     selected = request.form.getlist('selected')
