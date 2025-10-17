@@ -127,6 +127,14 @@ class DownloadOption(TypedDict):
 
 app = Flask(__name__)
 
+@app.errorhandler(500)
+def internal_error(error: Exception):
+    error_details = None
+    if app.debug:
+        import traceback
+        error_details = traceback.format_exc()
+    return render_template('error_500.html', error=error_details), 500
+
 @app.teardown_request
 def cleanup_browser_manager(exception: Optional[BaseException] = None):
     """Clean up browser manager after each request"""

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Internal Server Error - Anime Downloader</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>⚠️ Internal Server Error</h1>
+            <p>Something went wrong on our end. Please try again later.</p>
+        </header>
+
+        <div class="card">
+            <p style="color: var(--text-muted); margin-bottom: 2rem;">
+                We're sorry for the inconvenience. The error has been logged and our team will look into it.
+            </p>
+
+            <a href="/" class="btn btn-primary" style="display: inline-block; text-decoration: none;">
+                🏠 Back to Homepage
+            </a>
+        </div>
+
+        {% if error %}
+        <div class="card" style="margin-top: 2rem; border: 1px solid var(--error-color);">
+            <h3 style="color: var(--error-color); margin-bottom: 1rem;">Error Details (Development Mode)</h3>
+            <pre style="background: var(--bg-secondary); padding: 1rem; border-radius: 0.5rem; overflow-x: auto; font-size: 0.875rem; color: var(--text-color);">{{ error }}</pre>
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>

@@ -71,3 +71,6 @@ def build_executable():
 if __name__ == "__main__":
     success = build_executable()
     sys.exit(0 if success else 1)
+
+
+# uv run pyinstaller --onefile --add-data "ms-playwright;ms-playwright" --add-data "templates;templates" --add-data "static;static" --collect-all=flask --collect-all=playwright --hidden-import=webview --hidden-import=webview.platforms.winforms --hidden-import=clr --hidden-import=pythonnet --hidden-import=lxml --hidden-import=requests --hidden-import=urllib3 --name=pahe-downloader-playwright --clean --noconsole --icon=static/icon.ico main.py
