@@ -362,11 +362,12 @@ def get_download_link_task(page: Page, pahe_win_url: str) -> Optional[str]:
         print("DEBUG: Continue link not found")
         return None
 
-def get_download_link(pahe_win_url: str) -> Optional[str]:
+def get_download_link(pahe_win_url: str, browser_manager: Optional[BrowserManager] = None) -> Optional[str]:
     """Get download link using the browser manager for the browser part, then requests for the rest"""
     try:
-        # Use browser manager for the Playwright part
-        redirect_url = get_browser_manager().execute_task(get_download_link_task, pahe_win_url)
+        # Use provided browser manager or get the global one
+        bm = browser_manager or get_browser_manager()
+        redirect_url = bm.execute_task(get_download_link_task, pahe_win_url)
 
         if not redirect_url:
             return None
@@ -555,7 +556,7 @@ def process_downloads(selected_eps: List[Episode]) -> None:
 
                 download_status['status_message'] = f'Getting download link for episode {ep["number"]}...'
                 print(f"DEBUG: Getting download link from: {pahe_url}")
-                download_url = local_browser_manager.execute_task(get_download_link_task, pahe_url)
+                download_url = get_download_link(pahe_url, local_browser_manager)
                 print(f"DEBUG: Final download URL: {download_url}")
 
                 if not download_url:
