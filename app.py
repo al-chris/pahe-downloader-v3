@@ -9,6 +9,25 @@ from typing import List, Optional, Union, TypedDict, Callable, Any
 from playwright.sync_api import sync_playwright, Browser, Page
 import time
 import urllib3
+import logging
+
+# Set up logging to file in local app data
+log_dir = os.path.join(os.path.expandvars('%LOCALAPPDATA%'), 'pahe-downloader', 'logs')
+os.makedirs(log_dir, exist_ok=True)
+log_file = os.path.join(log_dir, 'app.log')
+logging.basicConfig(
+    filename=log_file,
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
+# Also log to console for development
+console = logging.StreamHandler()
+console.setLevel(logging.INFO)
+formatter = logging.Formatter('%(levelname)s - %(funcName)s - %(message)s')
+console.setFormatter(formatter)
+logging.getLogger('').addHandler(console)
 
 # Browser Manager for per-request browser instances
 class BrowserManager:
@@ -46,12 +65,12 @@ class BrowserManager:
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"
         )
         self.operation_count = 0
-        print("DEBUG: BrowserManager initialized new Playwright browser")
+        logging.info(f"BrowserManager initialized new Playwright browser")
 
     def _restart_browser_if_needed(self):
         """Restart browser if operation limit reached"""
         if self.operation_count >= self.max_operations_per_page:
-            print(f"DEBUG: Restarting browser after {self.operation_count} operations")
+            logging.debug(f"Restarting browser after {self.operation_count} operations")
             self._close_browser()
             self._initialize_browser()
 
@@ -61,19 +80,19 @@ class BrowserManager:
             try:
                 self.page.close()
             except Exception as e:
-                print(f"DEBUG: Error closing page: {e}")
+                logging.error(f"Error closing page: {e}")
             self.page = None
         if self.browser:
             try:
                 self.browser.close()
             except Exception as e:
-                print(f"DEBUG: Error closing browser: {e}")
+                logging.error(f"Error closing browser: {e}")
             self.browser = None
         if self.playwright:
             try:
                 self.playwright.stop()
             except Exception as e:
-                print(f"DEBUG: Error stopping playwright: {e}")
+                logging.error(f"Error stopping playwright: {e}")
             self.playwright = None
 
     def execute_task(self, task_func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
@@ -88,16 +107,16 @@ class BrowserManager:
             self.operation_count += 1
             return result
         except Exception as e:
-            print(f"DEBUG: Task execution failed: {e}")
+            logging.error(f"Task execution failed: {e}")
             # If task fails, restart browser on next operation
             self._close_browser()
             raise e
 
     def cleanup(self):
         """Cleanup resources"""
-        print("DEBUG: Starting BrowserManager cleanup...")
+        logging.info(f"Starting BrowserManager cleanup...")
         self._close_browser()
-        print("DEBUG: BrowserManager cleanup complete")
+        logging.info(f"BrowserManager cleanup complete")
 
 def get_browser_manager() -> BrowserManager:
     """Get or create a browser manager for the current request"""
@@ -190,19 +209,19 @@ def decrypt(full_string: str, key: str, v1: str, v2: str) -> str:
 def get_episodes_task(page: Page, siteLink: str, domain: str = "animepahe.si") -> List[Episode]:
     """Task function for getting episodes using the shared page"""
     url = f"https://{domain}/anime/{siteLink}"
-    print(f"DEBUG: Fetching anime page with Playwright: {url}")
+    logging.info(f"Fetching anime page with Playwright: {url}")
 
     page.goto(url)
-    print("DEBUG: Page loaded, waiting for content...")
+    logging.info(f"Page loaded, waiting for content...")
 
     # Wait for episode links to load with a longer timeout
     page.wait_for_selector("a[href*='/play/']", timeout=30000)
-    print("DEBUG: Episode links found")
+    logging.debug(f"Episode links found")
 
     page_source = page.content()
 
     soup = BeautifulSoup(page_source, 'html.parser')
-    print(f"DEBUG: Page title: {soup.title.text if soup.title else 'No title'}")
+    logging.debug(f"Page title: {soup.title.text if soup.title else 'No title'}")
     
     # Extract anime name from title (remove " - Anime-Planet" or similar suffixes)
     anime_name = "Unknown Anime"
@@ -218,14 +237,14 @@ def get_episodes_task(page: Page, siteLink: str, domain: str = "animepahe.si") -
         else:
             anime_name = title_text
     
-    print(f"DEBUG: Extracted anime name: {anime_name}")
-    print(f"DEBUG: Total a tags: {len(soup.find_all('a'))}")
+    logging.debug(f"Extracted anime name: {anime_name}")
+    logging.debug(f"Tmsg=otal a tags: {len(soup.find_all('a'))}")
 
     ep_list: List[Episode] = []
     for a in soup.find_all('a', href=True):
         if '/play/' in a['href'] and siteLink in a['href']:
             text = a.get_text().strip()
-            print(f"DEBUG: Found episode link: {a['href']}, text: '{text}'")
+            logging.debug(f"Found episode link: {a['href']}, text: '{text}'")
             # Check for 'Watch - X Online' format
             if 'Watch' in text and 'Online' in text:
                 try:
@@ -237,7 +256,7 @@ def get_episodes_task(page: Page, siteLink: str, domain: str = "animepahe.si") -
                         ep_link = f'https://{domain}' + str(a['href'])
                         ep_list.append({'number': ep_num, 'link': ep_link, 'anime_name': anime_name})
                 except ValueError:
-                    print(f"DEBUG: Failed to parse episode number from '{text}'")
+                    logging.warning(f"Failed to parse episode number from '{text}'")
                     pass
             elif text.startswith('Episode '):
                 try:
@@ -245,10 +264,10 @@ def get_episodes_task(page: Page, siteLink: str, domain: str = "animepahe.si") -
                     ep_link = f'https://{domain}' + str(a['href'])
                     ep_list.append({'number': ep_num, 'link': ep_link, 'anime_name': anime_name})
                 except (ValueError, IndexError):
-                    print(f"DEBUG: Failed to parse episode number from '{text}'")
+                    logging.warning(f"Failed to parse episode number from '{text}'")
                     pass
 
-    print(f"DEBUG: Episodes found: {len(ep_list)}")
+    logging.info(f"Episodes found: {len(ep_list)}")
     return sorted(ep_list, key=lambda x: x['number'])
 
 def get_episodes(siteLink: str, domain: str = "animepahe.si") -> List[Episode]:
@@ -256,13 +275,13 @@ def get_episodes(siteLink: str, domain: str = "animepahe.si") -> List[Episode]:
     try:
         return get_browser_manager().execute_task(get_episodes_task, siteLink, domain)
     except Exception as e:
-        print(f"DEBUG: Exception in get_episodes: {e}")
+        logging.error(f"Exception in get_episodes: {e}")
         return []
 
 def get_download_options_task(page: Page, ep_link: str) -> List[DownloadOption]:
     """Task function for getting download options using the shared page"""
     page.goto(ep_link)
-    print("DEBUG: Loaded episode page, waiting for download options...")
+    logging.info(f"Loaded episode page, waiting for download options...")
 
     # Try to find and click the download dropdown toggle
     try:
@@ -279,31 +298,31 @@ def get_download_options_task(page: Page, ep_link: str) -> List[DownloadOption]:
         for selector in dropdown_selectors:
             try:
                 page.click(selector, timeout=5000)
-                print(f"DEBUG: Clicked dropdown toggle: {selector}")
+                logging.debug(f"Clicked dropdown toggle: {selector}")
                 dropdown_clicked = True
                 break
             except:
                 continue
 
         if not dropdown_clicked:
-            print("DEBUG: Could not find dropdown toggle, proceeding without clicking")
+            logging.warning(f"Could not find dropdown toggle, proceeding without clicking")
 
     except Exception as e:
-        print(f"DEBUG: Error clicking dropdown: {e}")
+        logging.warning(f"Emsg=rror clicking dropdown: {e}")
 
     # Wait a bit for options to load
     time.sleep(2)
 
     # Wait for download options to load
     page.wait_for_selector(".dropdown-item", timeout=30000)
-    print("DEBUG: Download options found")
+    logging.debug(f"Download options found")
 
     page_source = page.content()
     soup = BeautifulSoup(page_source, 'html.parser')
     options_list: List[DownloadOption] = []
     for a in soup.find_all('a', class_='dropdown-item'):
         text = a.get_text().strip()
-        print(f"DEBUG: Found download option: '{text}'")
+        logging.debug(f"Fmsg=ound download option: '{text}'")
         url = a['href']
         # Parse the text format like "SubsPlease · 720p (88MB)" or "Yameii · 1080p (139MB) eng"
         if '·' in text:
@@ -311,29 +330,29 @@ def get_download_options_task(page: Page, ep_link: str) -> List[DownloadOption]:
             if len(parts) >= 2:
                 group = parts[0].strip()
                 quality_part = parts[1].strip()
-                print(f"DEBUG: Parsing - Group: '{group}', Quality part: '{quality_part}'")
+                logging.debug(f"Parsing - Group: '{group}', Quality part: '{quality_part}'")
 
                 # Extract resolution and size from quality part (e.g., "720p (88MB)" -> "720", "88MB")
                 import re
-                print(f"DEBUG: Searching for resolution and size in: '{quality_part}'")
+                logging.debug(f"Smsg=earching for resolution and size in: '{quality_part}'")
                 res_match = re.search(r'(\d+)p', quality_part)
                 size_match = re.search(r'\((\d+(?:\.\d+)?)\s*(MB|GB|KB)\)', quality_part)
                 
                 if res_match:
                     res = res_match.group(1)
                     size = size_match.group(0) if size_match else "Unknown"
-                    print(f"DEBUG: Extracted resolution: {res}, size: {size}")
+                    logging.debug(f"Extracted resolution: {res}, size: {size}")
                     options_list.append({'res': res, 'url': str(url), 'group': group, 'size': size})
-                    print(f"DEBUG: Parsed option - Group: {group}, Res: {res}p, Size: {size}, URL: {url}")
+                    logging.debug(f"Parsed option - Group: {group}, Res: {res}p, Size: {size}, URL: {url}")
                 else:
-                    print(f"DEBUG: Could not extract resolution from: '{quality_part}' - no regex match")
+                    logging.debug(f"Cmsg=ould not extract resolution from: '{quality_part}' - no regex match")
             else:
-                print(f"DEBUG: Not enough parts after splitting '{text}' by '·'")
+                logging.debug(f"Not enough parts after splitting '{text}' by '·'")
         else:
             # Fallback for other formats
-            print(f"DEBUG: Option doesn't contain '·': '{text}'")
+            logging.debug(f"Option doesn't contain '·': '{text}'")
 
-    print(f"DEBUG: Total download options found: {len(options_list)}")
+    logging.info(f"Total download options found: {len(options_list)}")
     return options_list
 
 def get_download_options(ep_link: str) -> List[DownloadOption]:
@@ -341,12 +360,12 @@ def get_download_options(ep_link: str) -> List[DownloadOption]:
     try:
         return get_browser_manager().execute_task(get_download_options_task, ep_link)
     except Exception as e:
-        print(f"Exception in get_download_options: {e}")
+        logging.error(f"Exception in get_download_options: {e}")
         return []
 
 def get_download_link_task(page: Page, pahe_win_url: str) -> Optional[str]:
     """Task function for getting download link redirect URL using the shared page"""
-    print(f"DEBUG: Loading pahe.win page: {pahe_win_url}")
+    logging.info(f"Loading pahe.win page: {pahe_win_url}")
     page.goto(pahe_win_url)
 
     # Wait for the "Continue" link to appear (it appears after the countdown)
@@ -354,12 +373,12 @@ def get_download_link_task(page: Page, pahe_win_url: str) -> Optional[str]:
     if continue_link:
         redirect_url = continue_link.get_attribute('href')
         if redirect_url is None:
-            print("DEBUG: No redirect URL found")
+            logging.warning(f"No redirect URL found")
             return None
-        print(f"DEBUG: Found redirect URL: {redirect_url}")
+        logging.debug(f"Found redirect URL: {redirect_url}")
         return redirect_url
     else:
-        print("DEBUG: Continue link not found")
+        logging.debug(f"Continue link not found")
         return None
 
 def get_download_link(pahe_win_url: str, browser_manager: Optional[BrowserManager] = None) -> Optional[str]:
@@ -407,7 +426,7 @@ def get_download_link(pahe_win_url: str, browser_manager: Optional[BrowserManage
         return content.headers.get("Location")
 
     except Exception as e:
-        print(f"DEBUG: Exception in get_download_link: {e}")
+        logging.error(f"Exception in get_download_link: {e}")
         return None
 
 @app.route('/')
@@ -417,7 +436,7 @@ def index():
 @app.route('/download', methods=['POST'])
 def download():
     url = request.form['url']
-    print(f"DEBUG: Received URL: {url}")
+    logging.info(f"Received URL: {url}")
 
     # Extract domain and anime_id more flexibly
     try:
@@ -427,7 +446,7 @@ def download():
         path_parts = parsed_url.path.strip('/').split('/')
         anime_id = path_parts[-1] if path_parts else ''
 
-        print(f"DEBUG: Parsed domain: {domain}, anime_id: {anime_id}")
+        logging.debug(f"Parsed domain: {domain}, anime_id: {anime_id}")
 
         if not anime_id:
             return render_template('error.html',
@@ -437,25 +456,25 @@ def download():
 
         # Use the domain from the user's URL instead of hardcoding animepahe.si
         full_url = f"https://{domain}/anime/{anime_id}"
-        print(f"DEBUG: Full URL to fetch: {full_url}")
+        logging.info(f"Full URL to fetch: {full_url}")
 
     except Exception as e:
-        print(f"DEBUG: URL parsing error: {e}")
+        logging.error(f"URL parsing error: {e}")
         return render_template('error.html',
                              title="Invalid URL",
                              heading="Invalid URL Format",
                              message="The provided URL could not be parsed. Please check the URL and try again.")
 
-    print("DEBUG: Calling get_episodes...")
+    logging.debug(f"Calling get_episodes...")
     episodes = get_episodes(anime_id, domain)
-    print(f"DEBUG: Episodes found: {len(episodes)}")
+    logging.info(f"Episodes found: {len(episodes)}")
     if not episodes:
-        print("DEBUG: No episodes found, returning error message")
+        logging.warning(f"No episodes found, returning error message")
         return render_template('error.html',
                              title="No Episodes Found",
                              heading="No Episodes Found",
                              message="No episodes were found for this anime. Please check that the URL is correct and points to a valid anime page.")
-    print("DEBUG: Rendering select.html template")
+    logging.debug(f"Rendering select.html template")
     anime_name = episodes[0]['anime_name'] if episodes else "Unknown Anime"
     return render_template('select.html', episodes=episodes, url=url, anime_name=anime_name)
 
@@ -511,24 +530,24 @@ def process_downloads(selected_eps: List[Episode]) -> None:
         global download_status
         download_dir = 'downloads'
         os.makedirs(download_dir, exist_ok=True)
-        print(f"DEBUG: Created downloads directory: {download_dir}")
-        print(f"DEBUG: Processing {len(selected_eps)} episodes")
+        logging.debug(f"Created downloads directory: {download_dir}")
+        logging.debug(f"Pmsg=rocessing {len(selected_eps)} episodes")
 
         download_status['status_message'] = f'Processing {len(selected_eps)} episodes...'
 
         def download_ep(ep: Episode) -> None:
             global download_status
-            print(f"DEBUG: Processing episode {ep['number']}: {ep['link']}")
+            logging.debug(f"Processing episode {ep['number']}: {ep['link']}")
             download_status['status_message'] = f'Finding download options for episode {ep["number"]}...'
             
             # Create a new browser instance for this download operation
             local_browser_manager = BrowserManager()
             try:
                 options = local_browser_manager.execute_task(get_download_options_task, str(ep['link']))
-                print(f"DEBUG: Download options: {options}")
+                logging.debug(f"Download options: {options}")
 
                 if not options:
-                    print(f"DEBUG: No download options found for episode {ep['number']}")
+                    logging.debug(f"No download options found for episode {ep['number']}")
                     return
 
                 download_status['status_message'] = f'Selecting quality for episode {ep["number"]}...'
@@ -540,7 +559,7 @@ def process_downloads(selected_eps: List[Episode]) -> None:
                     for opt in options:
                         if opt['res'] == pref_res:
                             pahe_url = opt['url']
-                            print(f"DEBUG: Selected {pref_res}p option: {pahe_url}")
+                            logging.debug(f"Selected {pref_res}p option: {pahe_url}")
                             break
                     if pahe_url:
                         break
@@ -548,19 +567,19 @@ def process_downloads(selected_eps: List[Episode]) -> None:
                 # If no preferred resolution found, take the first available
                 if not pahe_url and options:
                     pahe_url = options[0]['url']
-                    print(f"DEBUG: No preferred resolution found, using: {pahe_url}")
+                    logging.debug(f"No preferred resolution found, using: {pahe_url}")
 
                 if not pahe_url:
-                    print(f"DEBUG: No download URL found for episode {ep['number']}")
+                    logging.debug(f"No download URL found for episode {ep['number']}")
                     return
 
                 download_status['status_message'] = f'Getting download link for episode {ep["number"]}...'
-                print(f"DEBUG: Getting download link from: {pahe_url}")
+                logging.debug(f"Getting download link from: {pahe_url}")
                 download_url = get_download_link(pahe_url, local_browser_manager)
-                print(f"DEBUG: Final download URL: {download_url}")
+                logging.debug(f"Final download URL: {download_url}")
 
                 if not download_url:
-                    print(f"DEBUG: No download URL obtained for episode {ep['number']}")
+                    logging.debug(f"No download URL obtained for episode {ep['number']}")
                     return
 
                 download_status['current_episode'] = ep['number']
@@ -598,13 +617,13 @@ def process_downloads(selected_eps: List[Episode]) -> None:
                             extension = '.flv'
                             
                 except Exception as e:
-                    print(f"DEBUG: Could not determine file extension, using default .mp4: {e}")
+                    logging.warning(f"Could not determine file extension, using default .mp4: {e}")
                 
                 # Sanitize anime name for filename (remove invalid characters)
                 safe_anime_name = "".join(c for c in ep['anime_name'] if c.isalnum() or c in (' ', '-', '_')).rstrip()
                 filename = f"{safe_anime_name}_Episode_{str(ep['number'])}{extension}"
                 filepath = os.path.join(download_dir, filename)
-                print(f"DEBUG: Downloading to: {filepath}")
+                logging.info(f"Downloading to: {filepath}")
 
                 try:
                     # First attempt with SSL verification enabled
@@ -622,10 +641,10 @@ def process_downloads(selected_eps: List[Episode]) -> None:
                                             episode_progress = (downloaded / total_size) * 100
                                             overall_progress = ((int(ep['number']) - 1) / len(selected_eps) * 100) + (episode_progress / len(selected_eps))
                                             download_status['progress'] = min(overall_progress, 90)
-                        print(f"DEBUG: Successfully downloaded {filename}")
+                        logging.info(f"Successfully downloaded {filename}")
                     except requests.exceptions.SSLError as ssl_error:
                         # SSL verification failed, retry with verification disabled
-                        print(f"DEBUG: SSL verification failed for {filename}, retrying with SSL verification disabled: {ssl_error}")
+                        logging.debug(f"SSL verification failed for {filename}, retrying with SSL verification disabled: {ssl_error}")
                         # Suppress SSL warnings for this request
                         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
                         with requests.get(download_url, stream=True, timeout=30, verify=False) as r:
@@ -641,9 +660,9 @@ def process_downloads(selected_eps: List[Episode]) -> None:
                                             episode_progress = (downloaded / total_size) * 100
                                             overall_progress = ((int(ep['number']) - 1) / len(selected_eps) * 100) + (episode_progress / len(selected_eps))
                                             download_status['progress'] = min(overall_progress, 90)
-                        print(f"DEBUG: Successfully downloaded {filename} (SSL verification disabled)")
+                        logging.debug(f"Successfully downloaded {filename} (SSL verification disabled)")
                 except Exception as e:
-                    print(f"DEBUG: Download failed for {filename}: {e}")
+                    logging.error(f"Download failed for {filename}: {e}")
             finally:
                 # Clean up the local browser manager
                 local_browser_manager.cleanup()
@@ -660,19 +679,19 @@ def process_downloads(selected_eps: List[Episode]) -> None:
     download_status['status_message'] = 'Creating ZIP file...'
     zip_path = 'downloads.zip'
     files_to_zip = os.listdir(download_dir)
-    print(f"DEBUG: Files in downloads directory: {files_to_zip}")
+    logging.info(f"Files in downloads directory: {files_to_zip}")
 
     with zipfile.ZipFile(zip_path, 'w') as zf:
         for file in files_to_zip:
             file_path = os.path.join(download_dir, file)
             if os.path.isfile(file_path):
                 zf.write(file_path, file)
-                print(f"DEBUG: Added {file} to ZIP")
+                logging.debug(f"Added {file} to ZIP")
             else:
-                print(f"DEBUG: Skipping {file} (not a file)")
+                logging.debug(f"Skipping {file} (not a file)")
 
     zip_size = os.path.getsize(zip_path) if os.path.exists(zip_path) else 0
-    print(f"DEBUG: ZIP file created successfully, size: {format_file_size(zip_size)}")
+    logging.info(f"ZIP file created successfully, size: {format_file_size(zip_size)}")
     
     download_status['progress'] = 100
     download_status['status_message'] = 'Download complete! Preparing file...'
