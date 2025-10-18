@@ -27,7 +27,7 @@ import time
 
 def run_flask():
     """Run Flask app in a separate thread"""
-    app.run(host='127.0.0.1', port=5000, debug=False, threaded=True, use_reloader=False)
+    app.run(host='127.0.0.1', port=1523, debug=False, threaded=True, use_reloader=False)
 
 def signal_handler(sig: int, frame: FrameType | None) -> None:
     """Handle graceful shutdown on Ctrl+C"""
@@ -49,7 +49,7 @@ if __name__ == "__main__":
         # Create PyWebView window
         window = webview.create_window(  # type: ignore
             'Pahe Downloader',
-            'http://127.0.0.1:5000',
+            'http://127.0.0.1:1513',
             width=900,
             height=600,
             resizable=True,

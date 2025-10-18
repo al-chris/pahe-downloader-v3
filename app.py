@@ -12,7 +12,7 @@ import urllib3
 import logging
 
 # Set up logging to file in local app data
-log_dir = os.path.join(os.path.expandvars('%LOCALAPPDATA%'), 'pahe-downloader', 'logs')
+log_dir = os.path.join(os.path.expandvars('%LOCALAPPDATA%'), 'pahe-downloader-playwright', 'logs')
 os.makedirs(log_dir, exist_ok=True)
 log_file = os.path.join(log_dir, 'app.log')
 logging.basicConfig(

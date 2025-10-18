@@ -42,7 +42,7 @@ def build_executable():
     print("Command:", " ".join(cmd))
 
     try:
-        _ = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        subprocess.run(cmd, check=True)
         print("Build completed successfully!")
         print("Executable created at: dist/pahe-downloader-playwright.exe")
 
