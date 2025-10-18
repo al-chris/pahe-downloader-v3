@@ -35,7 +35,7 @@ A modern, standalone desktop application for downloading anime episodes from ani
    cd pahe-downloader
    ```
 
-2. **Install dependencies using uv:**
+2. **Install dependencies using uv (recommended):**
    ```bash
    uv sync
 
@@ -126,26 +126,39 @@ Downloads are automatically organized with descriptive filenames:
 6. **Concurrent Downloads**: Downloads multiple episodes simultaneously to `downloads/` folder
 7. **Progress Tracking**: Real-time updates through the desktop interface
 
+## 📋 Logging & Debugging
+
+The application includes comprehensive logging for troubleshooting:
+
+### Log Location
+- **File**: `%LOCALAPPDATA%/pahe-downloader/logs/app.log`
+- **Console**: INFO level messages appear in the console during development
+- **Levels**: DEBUG, INFO, WARNING, ERROR with timestamps
+
+### What Gets Logged
+- Browser driver initialization and management
+- Web scraping operations and results
+- Download progress and file operations
+- Error conditions and exceptions
+- Episode parsing and URL resolution
+
+### Troubleshooting
+If you encounter issues:
+1. Check the log file at `%LOCALAPPDATA%/pahe-downloader/logs/app.log`
+2. Look for ERROR or WARNING messages
+3. The logs include detailed information about failures and their causes
+4. For driver issues, logs will show Chrome version detection and driver download status
+
 ## 📦 Distribution
 
 ### Building Standalone Executable
 
 To create a single executable file for easy distribution:
 
-#### Option 1: Using the Build Script
+#### Option 1: Using the Build Script (Recommended)
 ```bash
-# Install PyInstaller first
-pip install pyinstaller
-
-# Run the build script
-python build.py
-```
-
-or
-
-```bash
-# Install PyInstaller first
-uv add pyinstaller
+# Install PyInstaller in the project environment
+uv pip install pyinstaller
 
 # Run the build script
 uv run build.py
@@ -154,10 +167,19 @@ uv run build.py
 #### Option 2: Manual PyInstaller Command
 ```bash
 # Install PyInstaller
-pip install pyinstaller
+uv pip install pyinstaller
+
+# Run the build script
+uv run build.py
+```
+
+#### Option 2: Manual PyInstaller Command
+```bash
+# Install PyInstaller
+uv add pyinstaller
 
 # Build the executable with custom icon
-pyinstaller --onefile --hidden-import=webdriver_manager --hidden-import=playwright --hidden-import=webview --hidden-import=webview.platforms.winforms --hidden-import=clr --hidden-import=pythonnet --hidden-import=flask --hidden-import=beautifulsoup4 --hidden-import=lxml --hidden-import=requests --hidden-import=urllib3 --name=pahe-downloader --clean --noconsole --icon=static/icon.ico main.py
+uv run pyinstaller --onefile --hidden-import=webdriver_manager --hidden-import=playwright --hidden-import=webview --hidden-import=webview.platforms.winforms --hidden-import=clr --hidden-import=pythonnet --hidden-import=flask --hidden-import=beautifulsoup4 --hidden-import=lxml --hidden-import=requests --hidden-import=urllib3 --name=pahe-downloader --clean --noconsole --icon=static/icon.ico main.py
 ```
 
 The executable will be created in the `dist/` folder as `pahe-downloader.exe` with the custom application icon.

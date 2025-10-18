@@ -107,7 +107,7 @@ class BrowserManager:
             self.operation_count += 1
             return result
         except Exception as e:
-            logging.error(f"Task execution failed: {e}")
+            logging.warning(f"Task execution failed: {e}")
             # If task fails, restart browser on next operation
             self._close_browser()
             raise e
@@ -644,7 +644,7 @@ def process_downloads(selected_eps: List[Episode]) -> None:
                         logging.info(f"Successfully downloaded {filename}")
                     except requests.exceptions.SSLError as ssl_error:
                         # SSL verification failed, retry with verification disabled
-                        logging.debug(f"SSL verification failed for {filename}, retrying with SSL verification disabled: {ssl_error}")
+                        logging.warning(f"SSL verification failed for {filename}, retrying with SSL verification disabled: {ssl_error}")
                         # Suppress SSL warnings for this request
                         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
                         with requests.get(download_url, stream=True, timeout=30, verify=False) as r:
@@ -662,7 +662,7 @@ def process_downloads(selected_eps: List[Episode]) -> None:
                                             download_status['progress'] = min(overall_progress, 90)
                         logging.debug(f"Successfully downloaded {filename} (SSL verification disabled)")
                 except Exception as e:
-                    logging.error(f"Download failed for {filename}: {e}")
+                    logging.warning(f"Download failed for {filename}: {e}")
             finally:
                 # Clean up the local browser manager
                 local_browser_manager.cleanup()
