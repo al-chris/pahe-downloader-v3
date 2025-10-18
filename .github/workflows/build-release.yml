@@ -53,7 +53,7 @@ jobs:
 
     - name: Build executable
       run: |
-        uv run pyinstaller --onefile --add-data "ms-playwright;ms-playwright" --collect-all=flask --collect-all=playwright --hidden-import=webview --hidden-import=webview.platforms.winforms --hidden-import=clr --hidden-import=pythonnet --hidden-import=lxml --hidden-import=requests --hidden-import=urllib3 --name=pahe-downloader-playwright --clean --noconsole --icon=static/icon.ico main.py
+        uv run pyinstaller --onefile --add-data "ms-playwright;ms-playwright" --add-data "templates;templates" --add-data "static;static" --collect-all=flask --collect-all=playwright --hidden-import=webview --hidden-import=webview.platforms.winforms --hidden-import=clr --hidden-import=pythonnet --hidden-import=lxml --hidden-import=requests --hidden-import=urllib3 --name=pahe-downloader-playwright --clean --noconsole --icon=static/icon.ico main.py
 
     - name: Verify executable exists
       run: |
