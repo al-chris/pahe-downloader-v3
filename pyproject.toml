@@ -1,7 +1,7 @@
 [project]
 name = "pahe-downloader-v3"
 version = "0.1.0"
-description = "Web app to download anime episodes from animepahe.si"
+description = "Web app to download anime episodes from animepahe.pw"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

@@ -122,7 +122,7 @@ document.addEventListener('DOMContentLoaded', function() {
             downloadButton.title = '';
         } else {
             downloadButton.classList.add('btn-disabled');
-            downloadButton.title = 'Please enter a valid AnimePahe URL (e.g., https://animepahe.si/anime/anime-id)';
+            downloadButton.title = 'Please enter a valid AnimePahe URL (e.g., https://animepahe.pw/anime/anime-id)';
         }
     }
 
@@ -148,7 +148,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!isValidAnimePaheUrl(url)) {
                 console.log('Validation failed: invalid URL format');
                 e.preventDefault();
-                showAlert('Please enter a valid AnimePahe URL in the format: https://animepahe.si/anime/anime-id', 'error');
+                showAlert('Please enter a valid AnimePahe URL in the format: https://animepahe.pw/anime/anime-id', 'error');
                 return;
             }
 

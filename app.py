@@ -206,7 +206,7 @@ def decrypt(full_string: str, key: str, v1: str, v2: str) -> str:
         i += 1
     return r
 
-def get_episodes_task(page: Page, siteLink: str, domain: str = "animepahe.si") -> List[Episode]:
+def get_episodes_task(page: Page, siteLink: str, domain: str = "animepahe.pw") -> List[Episode]:
     """Task function for getting episodes using the shared page"""
     url = f"https://{domain}/anime/{siteLink}"
     logging.info(f"Fetching anime page with Playwright: {url}")
@@ -270,7 +270,7 @@ def get_episodes_task(page: Page, siteLink: str, domain: str = "animepahe.si") -
     logging.info(f"Episodes found: {len(ep_list)}")
     return sorted(ep_list, key=lambda x: x['number'])
 
-def get_episodes(siteLink: str, domain: str = "animepahe.si") -> List[Episode]:
+def get_episodes(siteLink: str, domain: str = "animepahe.pw") -> List[Episode]:
     """Get episodes using the browser manager"""
     try:
         return get_browser_manager().execute_task(get_episodes_task, siteLink, domain)
@@ -454,7 +454,7 @@ def download():
                                  heading="Invalid URL Format",
                                  message="Please provide a complete anime page URL from AnimePahe.")
 
-        # Use the domain from the user's URL instead of hardcoding animepahe.si
+        # Use the domain from the user's URL instead of hardcoding animepahe.pw
         full_url = f"https://{domain}/anime/{anime_id}"
         logging.info(f"Full URL to fetch: {full_url}")
 

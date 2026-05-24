@@ -1,6 +1,6 @@
 # 🎬 Pahe Downloader
 
-A modern, standalone desktop application for downloading anime episodes from animepahe.si. Built with Flask backend and PyWebView frontend, featuring intelligent file naming and automated browser driver management.
+A modern, standalone desktop application for downloading anime episodes from animepahe.pw. Built with Flask backend and PyWebView frontend, featuring intelligent file naming and automated browser driver management.
 
 ![UI Preview](https://via.placeholder.com/800x400/6366f1/ffffff?text=Modern+Anime+Downloader+UI)
 
@@ -67,7 +67,7 @@ A modern, standalone desktop application for downloading anime episodes from ani
    The application will open in a native desktop window powered by PyWebView.
 
 3. **Enter anime URL:**
-   - Copy the full URL from animepahe.si, animepahe.ru, animepahe.com, or other AnimePahe domains
+   - Copy the full URL from animepahe.pw, animepahe.ru, animepahe.com, or other AnimePahe domains
    - The URL field validates input and provides visual feedback
    - Make sure the URL contains "/anime/" in the path
 
