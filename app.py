@@ -392,62 +392,72 @@ def get_download_link_task(page: Page, pahe_win_url: str) -> Optional[str]:
     page.goto(pahe_win_url)
 
     # Wait for the "Continue" link to appear (it appears after the countdown)
-    continue_link = page.wait_for_selector("a:has-text('Continue')", timeout=10000)
-    if continue_link:
-        redirect_url = continue_link.get_attribute('href')
-        if redirect_url is None:
-            logging.warning(f"No redirect URL found")
+    try:
+        continue_link = page.wait_for_selector("a:has-text('Continue')", timeout=10000)
+        if continue_link:
+            redirect_url = continue_link.get_attribute('href')
+            if not redirect_url:
+                logging.warning(f"No redirect URL found on pahe.win")
+                return None
+            logging.info(f"Found redirect URL: {redirect_url}. Navigating with Playwright...")
+            
+            # Go directly to kwik.cx inside Playwright to bypass Cloudflare
+            page.goto(redirect_url, wait_until='domcontentloaded')
+            page.wait_for_timeout(3000) # give cloudflare a moment
+            
+            form = page.wait_for_selector("form", timeout=15000)
+            if form:
+                logging.info("Found kwik form, intercepting MP4 request...")
+                mp4_url = [None]
+                
+                def intercept_mp4(route):
+                    if '.mp4' in route.request.url:
+                        mp4_url[0] = route.request.url
+                        route.abort()
+                    else:
+                        route.continue_()
+                        
+                page.route('**/*.mp4*', intercept_mp4)
+                
+                # Try clicking the "Download" button directly to submit the form
+                # If there's a button, click it, else just submit the form
+                page.evaluate("""(() => {
+                    let btn = document.querySelector('button[type="submit"]') || document.querySelector('form button');
+                    if (btn) btn.click();
+                    else document.querySelector('form').submit();
+                })()""")
+                
+                # Wait up to 10 seconds for the mp4 url to be captured
+                for _ in range(20):
+                    if mp4_url[0]:
+                        break
+                    page.wait_for_timeout(500)
+                    
+                page.unroute('**/*.mp4*')
+                
+                if mp4_url[0]:
+                    logging.info(f"Successfully captured MP4 URL: {mp4_url[0]}")
+                    return mp4_url[0]
+                else:
+                    logging.warning("Timed out waiting for MP4 URL interception.")
+                    return None
+            else:
+                logging.warning("No form found on kwik.cx")
+                return None
+        else:
+            logging.warning(f"Continue link not found on pahe.win")
             return None
-        logging.debug(f"Found redirect URL: {redirect_url}")
-        return redirect_url
-    else:
-        logging.debug(f"Continue link not found")
+    except Exception as e:
+        logging.error(f"Error extracting download link via Playwright: {e}")
         return None
 
 def get_download_link(pahe_win_url: str, browser_manager: Optional[BrowserManager] = None) -> Optional[str]:
-    """Get download link using the browser manager for the browser part, then requests for the rest"""
+    """Get download link using the browser manager"""
     try:
         # Use provided browser manager or get the global one
         bm = browser_manager or get_browser_manager()
-        redirect_url = bm.execute_task(get_download_link_task, pahe_win_url)
-
-        if not redirect_url:
-            return None
-
-        # Now proceed with the original logic using requests
-        session = requests.Session()
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Accept-Encoding': 'gzip, deflate',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'cross-site',
-            'Sec-Fetch-User': '?1',
-            'Cache-Control': 'max-age=0',
-        }
-        session.headers.update(headers)
-
-        cookie = get_ddg_cookies(redirect_url)
-        session.cookies.set('__ddg2', cookie, domain='.kwik.cx')  # type: ignore
-        response = session.get(redirect_url)
-        match = re.search(r'\("(\w+)",\d+,"(\w+)",(\d+),(\d+),\d+\)', response.text)
-        if not match:
-            return None
-        full_key, key, v1, v2 = match.groups()
-        decrypted = decrypt(full_key, key, v1, v2)
-        action_match = re.search('action="(.+?)"', decrypted)
-        token_match = re.search('value="(.+?)"', decrypted)
-        if not action_match or not token_match:
-            return None
-        action = action_match.group(1)
-        token = token_match.group(1)
-        content = session.post(action, allow_redirects=False, data={"_token": token}, headers={"Referer": "https://kwik.cx/"})
-        return content.headers.get("Location")
-
+        mp4_url = bm.execute_task(get_download_link_task, pahe_win_url)
+        return mp4_url
     except Exception as e:
         logging.error(f"Exception in get_download_link: {e}")
         return None
@@ -567,10 +577,10 @@ def process_downloads(selected_eps: List[Episode]) -> None:
             local_browser_manager = BrowserManager()
             try:
                 options = local_browser_manager.execute_task(get_download_options_task, str(ep['link']))
-                logging.debug(f"Download options: {options}")
+                logging.info(f"Download options: {options}")
 
                 if not options:
-                    logging.debug(f"No download options found for episode {ep['number']}")
+                    logging.warning(f"No download options found for episode {ep['number']}")
                     return
 
                 download_status['status_message'] = f'Selecting quality for episode {ep["number"]}...'
@@ -582,7 +592,6 @@ def process_downloads(selected_eps: List[Episode]) -> None:
                     for opt in options:
                         if opt['res'] == pref_res:
                             pahe_url = opt['url']
-                            logging.debug(f"Selected {pref_res}p option: {pahe_url}")
                             break
                     if pahe_url:
                         break
@@ -590,19 +599,17 @@ def process_downloads(selected_eps: List[Episode]) -> None:
                 # If no preferred resolution found, take the first available
                 if not pahe_url and options:
                     pahe_url = options[0]['url']
-                    logging.debug(f"No preferred resolution found, using: {pahe_url}")
 
                 if not pahe_url:
-                    logging.debug(f"No download URL found for episode {ep['number']}")
+                    logging.warning(f"No download URL found for episode {ep['number']}")
                     return
 
                 download_status['status_message'] = f'Getting download link for episode {ep["number"]}...'
-                logging.debug(f"Getting download link from: {pahe_url}")
                 download_url = get_download_link(pahe_url, local_browser_manager)
-                logging.debug(f"Final download URL: {download_url}")
+                logging.info(f"Final download URL: {download_url}")
 
                 if not download_url:
-                    logging.debug(f"No download URL obtained for episode {ep['number']}")
+                    logging.warning(f"No download URL obtained for episode {ep['number']}")
                     return
 
                 download_status['current_episode'] = ep['number']
