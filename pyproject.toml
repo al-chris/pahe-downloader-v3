@@ -13,4 +13,5 @@ dependencies = [
     "pywebview>=6.0",
     "playwright>=1.55.0",
     "pyinstaller>=6.16.0",
+    "playwright-stealth>=2.0.3",
 ]
