@@ -104,7 +104,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function isValidAnimePaheUrl(url) {
         if (!url || !url.trim()) return false;
 
-        const urlPattern = /^https:\/\/animepahe\.(si|ru|com)\/anime\/[^\/]+\/?$/i;
+        const urlPattern = /^https:\/\/animepahe\.(pw|ru|com)\/anime\/[^\/]+\/?$/i;
         return urlPattern.test(url.trim());
     }
 
