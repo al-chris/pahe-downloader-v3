@@ -242,7 +242,7 @@ def get_episodes_task(page: Page, siteLink: str, domain: str = "animepahe.pw") -
 
     ep_list: List[Episode] = []
     for a in soup.find_all('a', href=True):
-        if '/play/' in a['href'] and siteLink in a['href']:
+        if '/play/' in a['href']:
             text = a.get_text().strip()
             logging.debug(f"Found episode link: {a['href']}, text: '{text}'")
             # Check for 'Watch - X Online' format
