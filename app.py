@@ -240,33 +240,56 @@ def get_episodes_task(page: Page, siteLink: str, domain: str = "animepahe.pw") -
     logging.debug(f"Extracted anime name: {anime_name}")
     logging.debug(f"Tmsg=otal a tags: {len(soup.find_all('a'))}")
 
-    ep_list: List[Episode] = []
-    for a in soup.find_all('a', href=True):
-        if '/play/' in a['href']:
-            text = a.get_text().strip()
-            logging.debug(f"Found episode link: {a['href']}, text: '{text}'")
-            # Check for 'Watch - X Online' format
-            if 'Watch' in text and 'Online' in text:
-                try:
-                    # Extract number between ' - ' and ' Online'
-                    start = text.find(' - ') + 3
-                    end = text.find(' Online')
-                    if start > 2 and end > start:
-                        ep_num = int(text[start:end])
-                        ep_link = f'https://{domain}' + str(a['href'])
-                        ep_list.append({'number': ep_num, 'link': ep_link, 'anime_name': anime_name})
-                except ValueError:
-                    logging.warning(f"Failed to parse episode number from '{text}'")
-                    pass
-            elif text.startswith('Episode '):
-                try:
-                    ep_num = int(text.split()[1])
-                    ep_link = f'https://{domain}' + str(a['href'])
-                    ep_list.append({'number': ep_num, 'link': ep_link, 'anime_name': anime_name})
-                except (ValueError, IndexError):
-                    logging.warning(f"Failed to parse episode number from '{text}'")
-                    pass
+    episodes_dict = {}
 
+    while True:
+        try:
+            page.wait_for_selector("a[href*='/play/']", timeout=30000)
+        except Exception:
+            logging.warning("Timeout waiting for play links")
+            break
+
+        logging.debug(f"Parsing page...")
+        page_source = page.content()
+        soup = BeautifulSoup(page_source, 'html.parser')
+
+        for a in soup.find_all('a', href=True):
+            if '/play/' in a['href']:
+                text = a.get_text().strip()
+                # Check for 'Watch - X Online' format
+                if 'Watch' in text and 'Online' in text:
+                    try:
+                        # Extract number between ' - ' and ' Online'
+                        start = text.find(' - ') + 3
+                        end = text.find(' Online')
+                        if start > 2 and end > start:
+                            ep_num = int(text[start:end])
+                            ep_link = f'https://{domain}' + str(a['href'])
+                            episodes_dict[ep_num] = {'number': ep_num, 'link': ep_link, 'anime_name': anime_name}
+                    except ValueError:
+                        pass
+                elif text.startswith('Episode '):
+                    try:
+                        ep_num = int(text.split()[1])
+                        ep_link = f'https://{domain}' + str(a['href'])
+                        episodes_dict[ep_num] = {'number': ep_num, 'link': ep_link, 'anime_name': anime_name}
+                    except (ValueError, IndexError):
+                        pass
+
+        next_button = page.locator("li:not(.disabled) > a.next-page")
+        if next_button.count() > 0:
+            logging.debug("Found next page button, clicking...")
+            try:
+                with page.expect_response(lambda response: "api" in response.url, timeout=10000):
+                    next_button.first.click()
+                time.sleep(0.5)  # Let DOM update
+            except Exception as e:
+                logging.warning(f"Error navigating to next page: {e}")
+                time.sleep(2)  # Fallback
+        else:
+            break
+
+    ep_list = list(episodes_dict.values())
     logging.info(f"Episodes found: {len(ep_list)}")
     return sorted(ep_list, key=lambda x: x['number'])
 
