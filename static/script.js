@@ -3,22 +3,19 @@ document.addEventListener('DOMContentLoaded', function() {
     // Select all episodes functionality
     const selectAllCheckbox = document.getElementById('select-all');
     const episodeCheckboxes = document.querySelectorAll('.episode-checkbox');
+    const episodeCards = document.querySelectorAll('.episode-card');
+    const grid = document.querySelector('.episode-grid');
 
-    if (selectAllCheckbox && episodeCheckboxes.length > 0) {
-        selectAllCheckbox.addEventListener('change', function() {
-            episodeCheckboxes.forEach(checkbox => {
-                checkbox.checked = this.checked;
-                toggleEpisodeCard(checkbox);
-            });
-        });
-
-        episodeCheckboxes.forEach(checkbox => {
-            checkbox.addEventListener('change', function() {
-                toggleEpisodeCard(this);
-                updateSelectAllState();
-            });
-        });
-    }
+    let lastCheckedIndex = -1;
+    let isDragging = false;
+    let dragTargetState = null;
+    
+    // Marquee variables
+    let isMarquee = false;
+    let startX = 0;
+    let startY = 0;
+    let selectionBox = null;
+    let initialStates = []; // Store initial states of all checkboxes when marquee starts
 
     function toggleEpisodeCard(checkbox) {
         const card = checkbox.closest('.episode-card');
@@ -30,6 +27,197 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     }
+
+    function updateSelectAllState() {
+        if (!selectAllCheckbox || !episodeCheckboxes.length) return;
+        const total = episodeCheckboxes.length;
+        const checkedCount = document.querySelectorAll('.episode-checkbox:checked').length;
+        selectAllCheckbox.checked = checkedCount === total;
+        selectAllCheckbox.indeterminate = checkedCount > 0 && checkedCount < total;
+    }
+
+    if (selectAllCheckbox && episodeCheckboxes.length > 0) {
+        selectAllCheckbox.addEventListener('change', function() {
+            episodeCheckboxes.forEach(checkbox => {
+                checkbox.checked = this.checked;
+                toggleEpisodeCard(checkbox);
+            });
+            updateEpisodeDownloadButtonState();
+        });
+
+        // Initialize drag-to-select and keyboard navigation on cards
+        episodeCards.forEach((card, index) => {
+            const checkbox = episodeCheckboxes[index];
+
+            // Handle direct clicks on checkbox natively, so we just capture state and shift logic
+            checkbox.addEventListener('click', (e) => {
+                // If Shift + Click
+                if (e.shiftKey && lastCheckedIndex !== -1) {
+                    const start = Math.min(lastCheckedIndex, index);
+                    const end = Math.max(lastCheckedIndex, index);
+                    const targetState = checkbox.checked;
+                    for (let i = start; i <= end; i++) {
+                        episodeCheckboxes[i].checked = targetState;
+                        toggleEpisodeCard(episodeCheckboxes[i]);
+                    }
+                }
+                
+                lastCheckedIndex = index;
+                toggleEpisodeCard(checkbox);
+                updateSelectAllState();
+                updateEpisodeDownloadButtonState();
+            });
+
+            // Handle card mousedown (discontiguous / drag-to-select)
+            card.addEventListener('mousedown', (e) => {
+                if (e.target.tagName.toLowerCase() === 'input') return; // Handled above
+                if (e.button !== 0) return; // Left click only
+
+                isDragging = true;
+                const targetState = !checkbox.checked;
+
+                // Discontiguous / regular click
+                if (e.shiftKey && lastCheckedIndex !== -1) {
+                    const start = Math.min(lastCheckedIndex, index);
+                    const end = Math.max(lastCheckedIndex, index);
+                    for (let i = start; i <= end; i++) {
+                        episodeCheckboxes[i].checked = targetState;
+                        toggleEpisodeCard(episodeCheckboxes[i]);
+                    }
+                } else if (e.ctrlKey || e.metaKey || !e.shiftKey) {
+                    checkbox.checked = targetState;
+                    toggleEpisodeCard(checkbox);
+                }
+
+                dragTargetState = targetState;
+                lastCheckedIndex = index;
+                updateSelectAllState();
+                updateEpisodeDownloadButtonState();
+
+                e.preventDefault(); // Prevent text selection
+            });
+
+            card.addEventListener('mouseenter', (e) => {
+                if (isDragging && !isMarquee) {
+                    checkbox.checked = dragTargetState;
+                    toggleEpisodeCard(checkbox);
+                    lastCheckedIndex = index;
+                    updateSelectAllState();
+                    updateEpisodeDownloadButtonState();
+                }
+            });
+        });
+
+        // Marquee Selection Logic on Grid
+        if (grid) {
+            grid.addEventListener('mousedown', (e) => {
+                if (e.button !== 0) return;
+                // Only start marquee if clicking empty space in grid
+                const target = e.target;
+                if (target.classList.contains('episode-grid')) {
+                    isMarquee = true;
+                    startX = e.clientX;
+                    startY = e.clientY;
+                    
+                    selectionBox = document.createElement('div');
+                    selectionBox.classList.add('selection-box');
+                    selectionBox.style.left = startX + 'px';
+                    selectionBox.style.top = startY + 'px';
+                    selectionBox.style.width = '0px';
+                    selectionBox.style.height = '0px';
+                    document.body.appendChild(selectionBox);
+
+                    // Store states for inversion or setting
+                    initialStates = Array.from(episodeCheckboxes).map(cb => cb.checked);
+                    e.preventDefault();
+                }
+            });
+            
+            // Add keyboard navigation for selection
+            document.addEventListener('keydown', (e) => {
+                if (lastCheckedIndex === -1) return;
+                
+                let nextIndex = -1;
+                
+                // Get grid columns count to handle up/down arrows
+                const gridStyles = window.getComputedStyle(grid);
+                const columns = gridStyles.gridTemplateColumns.split(' ').length;
+
+                if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                    nextIndex = e.key === 'ArrowRight' ? lastCheckedIndex + 1 : lastCheckedIndex + columns;
+                } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                    nextIndex = e.key === 'ArrowLeft' ? lastCheckedIndex - 1 : lastCheckedIndex - columns;
+                }
+
+                if (nextIndex >= 0 && nextIndex < episodeCheckboxes.length) {
+                    if (e.shiftKey) {
+                        e.preventDefault();
+                        const checkbox = episodeCheckboxes[nextIndex];
+                        checkbox.checked = episodeCheckboxes[lastCheckedIndex].checked;
+                        toggleEpisodeCard(checkbox);
+                        lastCheckedIndex = nextIndex;
+                        updateSelectAllState();
+                        updateEpisodeDownloadButtonState();
+                    }
+                }
+            });
+        }
+    }
+
+    // Global listeners for dragging operations
+    document.addEventListener('mousemove', (e) => {
+        if (!isMarquee || !selectionBox) return;
+
+        const currentX = e.clientX;
+        const currentY = e.clientY;
+
+        const left = Math.min(startX, currentX);
+        const top = Math.min(startY, currentY);
+        const width = Math.abs(currentX - startX);
+        const height = Math.abs(currentY - startY);
+
+        selectionBox.style.left = left + 'px';
+        selectionBox.style.top = top + 'px';
+        selectionBox.style.width = width + 'px';
+        selectionBox.style.height = height + 'px';
+
+        // Check intersections
+        const boxRect = selectionBox.getBoundingClientRect();
+
+        episodeCards.forEach((card, index) => {
+            const cardRect = card.getBoundingClientRect();
+            // AABB Collision detection
+            const hasIntersection = !(
+                boxRect.right < cardRect.left ||
+                boxRect.left > cardRect.right ||
+                boxRect.bottom < cardRect.top ||
+                boxRect.top > cardRect.bottom
+            );
+
+            const checkbox = episodeCheckboxes[index];
+            if (e.ctrlKey || e.metaKey) {
+                // Invert selection
+                checkbox.checked = hasIntersection ? !initialStates[index] : initialStates[index];
+            } else {
+                // Select intercepted, else original or false
+                checkbox.checked = hasIntersection || (e.shiftKey ? initialStates[index] : false);
+                if (hasIntersection) checkbox.checked = true;
+            }
+            toggleEpisodeCard(checkbox);
+        });
+
+        updateSelectAllState();
+        updateEpisodeDownloadButtonState();
+    });
+
+    document.addEventListener('mouseup', () => {
+        isDragging = false;
+        if (isMarquee && selectionBox) {
+            isMarquee = false;
+            document.body.removeChild(selectionBox);
+            selectionBox = null;
+        }
+    });
 
     // Episode selection form validation
     const downloadSelectedForm = document.getElementById('download-selected-form');
