@@ -10,6 +10,7 @@ from playwright.sync_api import sync_playwright, Browser, Page
 import time
 import urllib3
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Set up logging to file in local app data
 log_dir = os.path.join(os.path.expandvars('%LOCALAPPDATA%'), 'pahe-downloader-playwright', 'logs')
@@ -28,6 +29,9 @@ console.setLevel(logging.INFO)
 formatter = logging.Formatter('%(levelname)s - %(funcName)s - %(message)s')
 console.setFormatter(formatter)
 logging.getLogger('').addHandler(console)
+
+KWIK_FORM_TIMEOUT_SECONDS = int(os.environ.get("PAHE_KWIK_FORM_TIMEOUT_SECONDS", "75"))
+MAX_CONCURRENT_DOWNLOADS = int(os.environ.get("PAHE_MAX_CONCURRENT_DOWNLOADS", "2"))
 
 # Browser Manager for per-request browser instances
 class BrowserManager:
@@ -64,6 +68,12 @@ class BrowserManager:
         self.page = self.browser.new_page(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"
         )
+        try:
+            from playwright_stealth import Stealth
+            Stealth().apply_stealth_sync(self.page)
+            logging.debug("Applied Playwright stealth settings")
+        except Exception as e:
+            logging.debug(f"Could not apply Playwright stealth settings: {e}")
         self.operation_count = 0
         logging.info(f"BrowserManager initialized new Playwright browser")
 
@@ -131,7 +141,8 @@ download_status: dict[str, Union[bool, int, str, float]] = {
     'current_episode': 0,
     'total_episodes': 0,
     'status_message': 'Initializing...',
-    'completed': False
+    'completed': False,
+    'failed': False
 }
 
 class Episode(TypedDict):
@@ -386,6 +397,56 @@ def get_download_options(ep_link: str) -> List[DownloadOption]:
         logging.error(f"Exception in get_download_options: {e}")
         return []
 
+def page_has_cloudflare_challenge(page: Page) -> bool:
+    """Detect Cloudflare verification pages before waiting on app-specific selectors."""
+    try:
+        title = page.title()
+        content = page.content()
+        challenge_markers = [
+            "Just a moment",
+            "Performing security verification",
+            "cf-turnstile-response",
+            "challenge-platform",
+            "Performance and Security by Cloudflare",
+        ]
+        return any(marker in title or marker in content for marker in challenge_markers)
+    except Exception:
+        return False
+
+def wait_for_kwik_form(page: Page, timeout_seconds: int = KWIK_FORM_TIMEOUT_SECONDS) -> Optional[Any]:
+    """Wait for the Kwik download form while logging Cloudflare challenge state."""
+    deadline = time.time() + timeout_seconds
+    cloudflare_seen = False
+
+    while time.time() < deadline:
+        try:
+            form = page.query_selector("form")
+            if form and form.is_visible():
+                if cloudflare_seen:
+                    logging.info("Cloudflare verification cleared; Kwik download form is visible")
+                return form
+
+            if page_has_cloudflare_challenge(page):
+                if not cloudflare_seen:
+                    logging.warning("Kwik is showing a Cloudflare verification page; waiting for it to clear")
+                    cloudflare_seen = True
+            else:
+                logging.debug(f"Kwik form not visible yet; current title: {page.title()}")
+        except Exception as e:
+            logging.debug(f"Error while waiting for Kwik form: {e}")
+
+        page.wait_for_timeout(1000)
+
+    if cloudflare_seen:
+        logging.error(
+            "Timed out waiting for Kwik Cloudflare verification to clear. "
+            "Cloudflare is blocking this Playwright browser session."
+        )
+    else:
+        logging.error("Timed out waiting for Kwik download form")
+
+    return None
+
 def get_download_link_task(page: Page, pahe_win_url: str) -> Optional[str]:
     """Task function for getting download link redirect URL using the shared page"""
     logging.info(f"Loading pahe.win page: {pahe_win_url}")
@@ -403,9 +464,7 @@ def get_download_link_task(page: Page, pahe_win_url: str) -> Optional[str]:
             
             # Go directly to kwik.cx inside Playwright to bypass Cloudflare
             page.goto(redirect_url, wait_until='domcontentloaded')
-            page.wait_for_timeout(3000) # give cloudflare a moment
-            
-            form = page.wait_for_selector("form", timeout=15000)
+            form = wait_for_kwik_form(page)
             if form:
                 logging.info("Found kwik form, intercepting MP4 request...")
                 mp4_url = [None]
@@ -442,7 +501,7 @@ def get_download_link_task(page: Page, pahe_win_url: str) -> Optional[str]:
                     logging.warning("Timed out waiting for MP4 URL interception.")
                     return None
             else:
-                logging.warning("No form found on kwik.cx")
+                logging.warning("No Kwik download form found")
                 return None
         else:
             logging.warning(f"Continue link not found on pahe.win")
@@ -548,7 +607,8 @@ def download_selected():
         'current_episode': 0,
         'total_episodes': len(selected_eps),
         'status_message': 'Starting download process...',
-        'completed': False
+        'completed': False,
+        'failed': False
     }
 
     # Start download in background thread
@@ -567,8 +627,10 @@ def process_downloads(selected_eps: List[Episode]) -> None:
         logging.debug(f"Pmsg=rocessing {len(selected_eps)} episodes")
 
         download_status['status_message'] = f'Processing {len(selected_eps)} episodes...'
+        downloaded_files: List[str] = []
+        downloaded_files_lock = threading.Lock()
 
-        def download_ep(ep: Episode) -> None:
+        def download_ep(ep: Episode) -> bool:
             global download_status
             logging.debug(f"Processing episode {ep['number']}: {ep['link']}")
             download_status['status_message'] = f'Finding download options for episode {ep["number"]}...'
@@ -581,7 +643,7 @@ def process_downloads(selected_eps: List[Episode]) -> None:
 
                 if not options:
                     logging.warning(f"No download options found for episode {ep['number']}")
-                    return
+                    return False
 
                 download_status['status_message'] = f'Selecting quality for episode {ep["number"]}...'
                 pahe_url = None
@@ -602,7 +664,7 @@ def process_downloads(selected_eps: List[Episode]) -> None:
 
                 if not pahe_url:
                     logging.warning(f"No download URL found for episode {ep['number']}")
-                    return
+                    return False
 
                 download_status['status_message'] = f'Getting download link for episode {ep["number"]}...'
                 download_url = get_download_link(pahe_url, local_browser_manager)
@@ -610,7 +672,7 @@ def process_downloads(selected_eps: List[Episode]) -> None:
 
                 if not download_url:
                     logging.warning(f"No download URL obtained for episode {ep['number']}")
-                    return
+                    return False
 
                 download_status['current_episode'] = ep['number']
                 download_status['status_message'] = f'Downloading episode {ep["number"]}...'
@@ -672,6 +734,9 @@ def process_downloads(selected_eps: List[Episode]) -> None:
                                             overall_progress = ((int(ep['number']) - 1) / len(selected_eps) * 100) + (episode_progress / len(selected_eps))
                                             download_status['progress'] = min(overall_progress, 90)
                         logging.info(f"Successfully downloaded {filename}")
+                        with downloaded_files_lock:
+                            downloaded_files.append(filepath)
+                        return True
                     except requests.exceptions.SSLError as ssl_error:
                         # SSL verification failed, retry with verification disabled
                         logging.warning(f"SSL verification failed for {filename}, retrying with SSL verification disabled: {ssl_error}")
@@ -691,34 +756,51 @@ def process_downloads(selected_eps: List[Episode]) -> None:
                                             overall_progress = ((int(ep['number']) - 1) / len(selected_eps) * 100) + (episode_progress / len(selected_eps))
                                             download_status['progress'] = min(overall_progress, 90)
                         logging.debug(f"Successfully downloaded {filename} (SSL verification disabled)")
+                        with downloaded_files_lock:
+                            downloaded_files.append(filepath)
+                        return True
                 except Exception as e:
                     logging.warning(f"Download failed for {filename}: {e}")
+                    return False
             finally:
                 # Clean up the local browser manager
                 local_browser_manager.cleanup()
 
-    threads: List[threading.Thread] = []
-    for ep in selected_eps:
-        t = threading.Thread(target=download_ep, args=(ep,))
-        threads.append(t)
-        t.start()
-    for t in threads:
-        t.join()
+        max_workers = max(1, min(MAX_CONCURRENT_DOWNLOADS, len(selected_eps)))
+        logging.info(f"Processing downloads with concurrency limit: {max_workers}")
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [executor.submit(download_ep, ep) for ep in selected_eps]
+            for future in as_completed(futures):
+                try:
+                    future.result()
+                except Exception as e:
+                    logging.error(f"Unhandled download worker error: {e}")
 
     # Create ZIP file
     download_status['status_message'] = 'Creating ZIP file...'
     zip_path = 'downloads.zip'
-    files_to_zip = os.listdir(download_dir)
+    files_to_zip = list(downloaded_files)
     logging.info(f"Files in downloads directory: {files_to_zip}")
 
+    if not files_to_zip:
+        logging.error("No files were downloaded; skipping ZIP creation")
+        download_status['progress'] = 100
+        download_status['status_message'] = (
+            'Download failed: no files were downloaded. '
+            'Kwik may be blocking the automated browser with Cloudflare verification.'
+        )
+        download_status['completed'] = False
+        download_status['failed'] = True
+        download_status['is_downloading'] = False
+        return
+
     with zipfile.ZipFile(zip_path, 'w') as zf:
-        for file in files_to_zip:
-            file_path = os.path.join(download_dir, file)
+        for file_path in files_to_zip:
             if os.path.isfile(file_path):
-                zf.write(file_path, file)
-                logging.debug(f"Added {file} to ZIP")
+                zf.write(file_path, os.path.basename(file_path))
+                logging.debug(f"Added {file_path} to ZIP")
             else:
-                logging.debug(f"Skipping {file} (not a file)")
+                logging.debug(f"Skipping {file_path} (not a file)")
 
     zip_size = os.path.getsize(zip_path) if os.path.exists(zip_path) else 0
     logging.info(f"ZIP file created successfully, size: {format_file_size(zip_size)}")
@@ -726,6 +808,7 @@ def process_downloads(selected_eps: List[Episode]) -> None:
     download_status['progress'] = 100
     download_status['status_message'] = 'Download complete! Preparing file...'
     download_status['completed'] = True
+    download_status['failed'] = False
     download_status['is_downloading'] = False
 
 @app.route('/download_status')

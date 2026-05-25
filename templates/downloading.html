@@ -97,6 +97,32 @@
                         if (card) {
                             card.appendChild(completionDiv);
                         }
+                    } else if (data.failed) {
+                        clearInterval(progressInterval);
+                        progressFill.style.width = '100%';
+                        progressText.textContent = data.status_message || 'Download failed.';
+
+                        const loadingDiv = document.querySelector('.loading');
+                        if (loadingDiv) {
+                            loadingDiv.style.display = 'none';
+                        }
+
+                        const failedDiv = document.createElement('div');
+                        failedDiv.style.textAlign = 'center';
+                        failedDiv.style.marginTop = '2rem';
+                        failedDiv.innerHTML = `
+                            <div class="alert alert-error" style="margin-bottom: 1rem;">
+                                <span>${data.status_message || 'No files were downloaded.'}</span>
+                            </div>
+                            <a href="/" class="btn btn-secondary" style="text-decoration: none;">
+                                Back to Homepage
+                            </a>
+                        `;
+
+                        const card = document.querySelector('.card');
+                        if (card) {
+                            card.appendChild(failedDiv);
+                        }
                     }
                 })
                 .catch(() => {
