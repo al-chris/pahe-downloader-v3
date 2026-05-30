@@ -347,17 +347,19 @@ def get_download_options_task(page: Page, ep_link: str) -> List[DownloadOption]:
     # Wait a bit for options to load
     time.sleep(2)
 
-    # Wait for download options to load
-    page.wait_for_selector(".dropdown-item", timeout=30000)
+    # Wait for actual download links, not provider buttons or episode dropdown links.
+    page.wait_for_selector("a.dropdown-item[href*='pahe.win']", state="attached", timeout=30000)
     logging.debug(f"Download options found")
 
     page_source = page.content()
     soup = BeautifulSoup(page_source, 'html.parser')
     options_list: List[DownloadOption] = []
-    for a in soup.find_all('a', class_='dropdown-item'):
+    for a in soup.find_all('a', class_='dropdown-item', href=True):
         text = a.get_text().strip()
         logging.debug(f"Fmsg=ound download option: '{text}'")
         url = a['href']
+        if 'pahe.win' not in str(url):
+            continue
         # Parse the text format like "SubsPlease · 720p (88MB)" or "Yameii · 1080p (139MB) eng"
         if '·' in text:
             parts = text.split('·')
@@ -429,6 +431,9 @@ def wait_for_kwik_form(page: Page, timeout_seconds: int = KWIK_FORM_TIMEOUT_SECO
             if page_has_cloudflare_challenge(page):
                 if not cloudflare_seen:
                     logging.warning("Kwik is showing a Cloudflare verification page; waiting for it to clear")
+                    download_status['status_message'] = (
+                        'Kwik is showing Cloudflare verification. Waiting for the automated browser session to clear it...'
+                    )
                     cloudflare_seen = True
             else:
                 logging.debug(f"Kwik form not visible yet; current title: {page.title()}")
@@ -638,7 +643,11 @@ def process_downloads(selected_eps: List[Episode]) -> None:
             # Create a new browser instance for this download operation
             local_browser_manager = BrowserManager()
             try:
-                options = local_browser_manager.execute_task(get_download_options_task, str(ep['link']))
+                try:
+                    options = local_browser_manager.execute_task(get_download_options_task, str(ep['link']))
+                except Exception as e:
+                    logging.warning(f"Could not get download options for episode {ep['number']}: {e}")
+                    return False
                 logging.info(f"Download options: {options}")
 
                 if not options:
