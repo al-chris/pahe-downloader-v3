@@ -6,7 +6,7 @@ import os
 import zipfile
 import threading
 from typing import List, Optional, Union, TypedDict, Callable, Any
-from playwright.sync_api import sync_playwright, Browser, Page
+from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page
 import time
 import urllib3
 import logging
@@ -31,7 +31,10 @@ console.setFormatter(formatter)
 logging.getLogger('').addHandler(console)
 
 KWIK_FORM_TIMEOUT_SECONDS = int(os.environ.get("PAHE_KWIK_FORM_TIMEOUT_SECONDS", "75"))
-MAX_CONCURRENT_DOWNLOADS = int(os.environ.get("PAHE_MAX_CONCURRENT_DOWNLOADS", "2"))
+KWIK_HEADLESS_FORM_TIMEOUT_SECONDS = int(os.environ.get("PAHE_KWIK_HEADLESS_FORM_TIMEOUT_SECONDS", "20"))
+KWIK_VISIBLE_FORM_TIMEOUT_SECONDS = int(os.environ.get("PAHE_KWIK_VISIBLE_FORM_TIMEOUT_SECONDS", "180"))
+MAX_CONCURRENT_DOWNLOADS = int(os.environ.get("PAHE_MAX_CONCURRENT_DOWNLOADS", "1"))
+kwik_profile_dir = os.path.join(os.path.expandvars('%LOCALAPPDATA%'), 'pahe-downloader-playwright', 'kwik-profile')
 
 # Browser Manager for per-request browser instances
 class BrowserManager:
@@ -452,6 +455,91 @@ def wait_for_kwik_form(page: Page, timeout_seconds: int = KWIK_FORM_TIMEOUT_SECO
 
     return None
 
+def capture_mp4_from_kwik_form(page: Page) -> Optional[str]:
+    """Submit the visible Kwik form and capture the generated MP4 request URL."""
+    logging.info("Found kwik form, intercepting MP4 request...")
+    mp4_url = [None]
+
+    def intercept_mp4(route):
+        if '.mp4' in route.request.url:
+            mp4_url[0] = route.request.url
+            route.abort()
+        else:
+            route.continue_()
+
+    page.route('**/*.mp4*', intercept_mp4)
+    try:
+        page.evaluate("""(() => {
+            let btn = document.querySelector('button[type="submit"]') || document.querySelector('form button');
+            if (btn) btn.click();
+            else document.querySelector('form').submit();
+        })()""")
+
+        for _ in range(20):
+            if mp4_url[0]:
+                break
+            page.wait_for_timeout(500)
+    finally:
+        try:
+            page.unroute('**/*.mp4*')
+        except Exception as e:
+            logging.debug(f"Could not remove MP4 route: {e}")
+
+    if mp4_url[0]:
+        logging.info(f"Successfully captured MP4 URL: {mp4_url[0]}")
+        return mp4_url[0]
+
+    logging.warning("Timed out waiting for MP4 URL interception.")
+    return None
+
+def get_download_link_with_visible_kwik_browser(redirect_url: str) -> Optional[str]:
+    """Open only the Kwik page in a visible persistent browser for Cloudflare challenges."""
+    os.makedirs(kwik_profile_dir, exist_ok=True)
+    playwright = None
+    context: Optional[BrowserContext] = None
+    try:
+        logging.info(f"Opening visible Kwik browser for: {redirect_url}")
+        download_status['status_message'] = (
+            'Kwik is showing Cloudflare verification. '
+            'Complete it in the opened Chromium window if prompted.'
+        )
+        playwright = sync_playwright().start()
+        context = playwright.chromium.launch_persistent_context(
+            user_data_dir=kwik_profile_dir,
+            headless=False,
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
+            viewport={"width": 1280, "height": 720},
+            args=["--window-size=1280,720"]
+        )
+        page = context.pages[0] if context.pages else context.new_page()
+        try:
+            from playwright_stealth import Stealth
+            Stealth().apply_stealth_sync(page)
+        except Exception as e:
+            logging.debug(f"Could not apply Playwright stealth settings to visible Kwik page: {e}")
+
+        page.goto(redirect_url, wait_until='domcontentloaded', timeout=60000)
+        form = wait_for_kwik_form(page, timeout_seconds=KWIK_VISIBLE_FORM_TIMEOUT_SECONDS)
+        if not form:
+            logging.warning("Visible Kwik browser did not reach the download form")
+            return None
+
+        return capture_mp4_from_kwik_form(page)
+    except Exception as e:
+        logging.error(f"Visible Kwik browser failed: {e}")
+        return None
+    finally:
+        if context:
+            try:
+                context.close()
+            except Exception as e:
+                logging.debug(f"Error closing visible Kwik browser context: {e}")
+        if playwright:
+            try:
+                playwright.stop()
+            except Exception as e:
+                logging.debug(f"Error stopping visible Kwik Playwright: {e}")
+
 def get_download_link_task(page: Page, pahe_win_url: str) -> Optional[str]:
     """Task function for getting download link redirect URL using the shared page"""
     logging.info(f"Loading pahe.win page: {pahe_win_url}")
@@ -469,45 +557,12 @@ def get_download_link_task(page: Page, pahe_win_url: str) -> Optional[str]:
             
             # Go directly to kwik.cx inside Playwright to bypass Cloudflare
             page.goto(redirect_url, wait_until='domcontentloaded')
-            form = wait_for_kwik_form(page)
+            form = wait_for_kwik_form(page, timeout_seconds=KWIK_HEADLESS_FORM_TIMEOUT_SECONDS)
             if form:
-                logging.info("Found kwik form, intercepting MP4 request...")
-                mp4_url = [None]
-                
-                def intercept_mp4(route):
-                    if '.mp4' in route.request.url:
-                        mp4_url[0] = route.request.url
-                        route.abort()
-                    else:
-                        route.continue_()
-                        
-                page.route('**/*.mp4*', intercept_mp4)
-                
-                # Try clicking the "Download" button directly to submit the form
-                # If there's a button, click it, else just submit the form
-                page.evaluate("""(() => {
-                    let btn = document.querySelector('button[type="submit"]') || document.querySelector('form button');
-                    if (btn) btn.click();
-                    else document.querySelector('form').submit();
-                })()""")
-                
-                # Wait up to 10 seconds for the mp4 url to be captured
-                for _ in range(20):
-                    if mp4_url[0]:
-                        break
-                    page.wait_for_timeout(500)
-                    
-                page.unroute('**/*.mp4*')
-                
-                if mp4_url[0]:
-                    logging.info(f"Successfully captured MP4 URL: {mp4_url[0]}")
-                    return mp4_url[0]
-                else:
-                    logging.warning("Timed out waiting for MP4 URL interception.")
-                    return None
-            else:
-                logging.warning("No Kwik download form found")
-                return None
+                return capture_mp4_from_kwik_form(page)
+
+            logging.warning("No Kwik download form found in headless browser; trying visible Kwik browser")
+            return get_download_link_with_visible_kwik_browser(redirect_url)
         else:
             logging.warning(f"Continue link not found on pahe.win")
             return None
