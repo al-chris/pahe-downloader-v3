@@ -34,6 +34,8 @@
                     {% for ep in episodes %}
                     <div class="episode-card selected">
                         <input type="checkbox" id="ep{{ ep.number }}" name="selected" value="{{ ep.number }}" class="episode-checkbox" checked>
+                        <input type="hidden" name="ep_link_{{ ep.number }}" value="{{ ep.link }}">
+                        <input type="hidden" name="ep_anime_name_{{ ep.number }}" value="{{ ep.anime_name }}">
                         <div class="episode-info">
                             <div class="episode-number">Episode {{ ep.number }}</div>
                             <div class="episode-status">Ready to download</div>

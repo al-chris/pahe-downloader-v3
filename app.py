@@ -579,30 +579,28 @@ def download():
 def download_selected():
     url = request.form['url']
 
-    # Extract domain and anime_id more flexibly
-    try:
-        from urllib.parse import urlparse
-        parsed_url = urlparse(url)
-        domain = parsed_url.netloc
-        path_parts = parsed_url.path.strip('/').split('/')
-        anime_id = path_parts[-1] if path_parts else ''
-
-        if not anime_id:
-            return render_template('error.html',
-                                 title="Invalid URL",
-                                 heading="Invalid URL Format",
-                                 message="Please provide a complete anime page URL from AnimePahe.")
-
-    except Exception:
-        return render_template('error.html',
-                             title="Invalid URL",
-                             heading="Invalid URL Format",
-                             message="The provided URL could not be parsed. Please check the URL and try again.")
-
-    episodes = get_episodes(anime_id, domain)
     selected = request.form.getlist('selected')
-    selected_nums = [int(s) for s in selected]
-    selected_eps = [ep for ep in episodes if ep['number'] in selected_nums]
+    selected_eps: List[Episode] = []
+    for selected_num in selected:
+        try:
+            ep_num = int(selected_num)
+        except ValueError:
+            logging.warning(f"Ignoring invalid selected episode number: {selected_num}")
+            continue
+
+        ep_link = request.form.get(f'ep_link_{ep_num}', '').strip()
+        ep_anime_name = request.form.get(f'ep_anime_name_{ep_num}', 'Unknown Anime').strip() or 'Unknown Anime'
+        if not ep_link:
+            logging.warning(f"Missing episode link for selected episode {ep_num}")
+            continue
+
+        selected_eps.append({'number': ep_num, 'link': ep_link, 'anime_name': ep_anime_name})
+
+    if not selected_eps:
+        return render_template('error.html',
+                             title="No Episodes Selected",
+                             heading="No Episodes Selected",
+                             message="No valid episode selections were received. Please go back and select at least one episode.")
 
     # Initialize download status
     global download_status
